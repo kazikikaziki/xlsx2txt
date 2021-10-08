@@ -51,6 +51,10 @@ void GameMain(const char *args_ansi) {
 	K::sysSetCurrentDir(K::sysGetCurrentExecDir()); // exe の場所をカレントディレクトリにする
 	K::win32_AllocConsole();
 	KLog::setOutputConsole(true);
+	KLog::printText("***");
+	KLog::printText("*** XLSX2TXT (%s) ***", __DATE__);
+	KLog::printText("***");
+	KLog::printText("");
 	KLog::printDebug("ARGS=%s\n", args_u8.c_str());
 
 	auto tok = K::strSplit(args_u8, " ");
