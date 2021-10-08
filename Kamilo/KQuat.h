@@ -31,6 +31,9 @@ public:
 	static float dot(const KQuat &a, const KQuat &b);
 	static KQuat mul(const KQuat &a, const KQuat &b);
 	static KQuat mul(const KQuat &q, const KVec3 &v);
+	static KQuat mul_xrot(const KQuat &a, float rad);
+	static KQuat mul_yrot(const KQuat &a, float rad);
+	static KQuat mul_zrot(const KQuat &a, float rad);
 	static KQuat lerp(const KQuat &a, const KQuat &b, float t);
 	static KQuat slerp(const KQuat &a, const KQuat &b, float t);
 	static KQuat shorter(const KQuat &a, const KQuat &b);

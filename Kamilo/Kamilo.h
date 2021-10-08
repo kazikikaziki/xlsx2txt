@@ -3,9 +3,7 @@
 /// This software is released under the MIT License.
 /// http://opensource.org/licenses/mit-license.php
 #pragma once
-#include "keng_ext.h"
 #include "keng_game.h"
-#include "keng_gameext.h"
 
 #include "CApp.h"
 #include "COutline.h"
@@ -30,7 +28,6 @@
 #include "KEasing.h"
 #include "KEmbeddedFiles.h"
 #include "KExcel.h"
-#include "KFile.h"
 #include "KFont.h"
 #include "KGizmoAct.h"
 #include "KHitbox.h"

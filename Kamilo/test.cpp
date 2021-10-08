@@ -1,7 +1,6 @@
 ﻿#include "KInternal.h"
 #include "KImage.h"
 #include "KMath.h"
-#include "KFile.h"
 
 namespace Kamilo {
 

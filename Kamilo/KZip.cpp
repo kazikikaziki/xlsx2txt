@@ -1216,7 +1216,8 @@ void Test_zip(const char *output_dir) {
 
 	// 通常書き込み
 	{
-		KOutputStream file = KOutputStream::fromFileName(name1.c_str());
+		KOutputStream file;
+		file.openFileName(name1.c_str());
 		KZipper zw(file);
 		zw.addEntry("file1.txt", "This is file1.\n", -1, nullptr, 0);
 		zw.addEntry("file2.txt", "This is file2.\n", -1, nullptr, 0);
@@ -1230,7 +1231,8 @@ void Test_zip(const char *output_dir) {
 	// パスワード付きで保存
 	{
 		const char *password = "helloworld";
-		KOutputStream file = KOutputStream::fromFileName(name2.c_str());
+		KOutputStream file;
+		file.openFileName(name2.c_str());
 		KZipper zw(file);
 		zw.setPassword(password);
 		zw.addEntry("file1_(password_helloworld).txt", "This is file1.\n", -1, nullptr, 0);
@@ -1241,7 +1243,8 @@ void Test_zip(const char *output_dir) {
 	
 	// 個別のパスワード付きで保存
 	{
-		KOutputStream file = KOutputStream::fromFileName(name3.c_str());
+		KOutputStream file;
+		file.openFileName(name3.c_str());
 		KZipper zw(file);
 		zw.setPassword("helloworld"); zw.addEntry("file1_(password_helloworld).txt", "This is file1.\n", -1, nullptr, 0);
 		zw.setPassword("deadbeef");   zw.addEntry("file2_(password_deadbeef).txt",   "This is file2.\n", -1, nullptr, 0);
@@ -1251,7 +1254,8 @@ void Test_zip(const char *output_dir) {
 
 	// 復元
 	{
-		KInputStream file = KInputStream::fromFileName(name1.c_str());
+		KInputStream file;
+		file.openFileName(name1.c_str());
 		KUnzipper zr(file);
 		std::string bin;
 		std::string name;
@@ -1266,7 +1270,8 @@ void Test_zip(const char *output_dir) {
 
 	// 復元（パスワード付き）
 	{
-		KInputStream file = KInputStream::fromFileName(name2.c_str());
+		KInputStream file;
+		file.openFileName(name2.c_str());
 		KUnzipper zr(file);
 		std::string bin;
 		zr.getEntryData(0, "helloworld", &bin); K__VERIFY(bin.compare("This is file1.\n") == 0);
@@ -1276,7 +1281,8 @@ void Test_zip(const char *output_dir) {
 
 	// 復元（個別のパスワード）
 	{
-		KInputStream file = KInputStream::fromFileName(name3.c_str());
+		KInputStream file;
+		file.openFileName(name3.c_str());
 		KUnzipper zr(file);
 		std::string bin;
 		zr.getEntryData(0, "helloworld", &bin); K__VERIFY(bin.compare("This is file1.\n") == 0);

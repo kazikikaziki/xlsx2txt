@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include "keng_game.h"
-#include "KFile.h"
 #include "KImGui.h"
 #include "KInternal.h"
 #include "KInspector.h"
@@ -241,9 +240,9 @@ static void _MeshSaveToFile(const KMesh *mesh, KOutputStream &output) {
 	output.write(s.data(), s.size());
 }
 static bool _MeshSaveToFileName(const KMesh *mesh, const KPath &filename) {
-	KOutputStream output = KOutputStream::fromFileName(filename.u8());
-	if (output.isOpen()) {
-		_MeshSaveToFile(mesh, output);
+	KOutputStream file;
+	if (file.openFileName(filename.u8())) {
+		_MeshSaveToFile(mesh, file);
 		return true;
 	} else {
 		KLog::printError("_MeshSaveToFileName: file can not be opened");
@@ -263,35 +262,35 @@ KSpriteRes::KSpriteRes() {
 	clear();
 }
 void KSpriteRes::clear() {
-	mImageW = 0;
-	mImageH = 0;
-	mAtlasX = 0;
-	mAtlasY = 0;
-	mAtlasW = 0;
-	mAtlasH = 0;
-	mPivot.x = 0.0f;
-	mPivot.y = 0.0f;
-	mSubMeshIndex = -1;
-	mPaletteCount = 0;
-	mDefaultBlend = KBlend_INVALID;
-	mPivotInPixels = false;
-	mUsingPackedTexture = false;
+	m_ImageW = 0;
+	m_ImageH = 0;
+	m_AtlasX = 0;
+	m_AtlasY = 0;
+	m_AtlasW = 0;
+	m_AtlasH = 0;
+	m_Pivot.x = 0.0f;
+	m_Pivot.y = 0.0f;
+	m_SubMeshIndex = -1;
+	m_PaletteCount = 0;
+	m_DefaultBlend = KBlend_INVALID;
+	m_PivotInPixels = false;
+	m_UsingPackedTexture = false;
 }
 KVec3 KSpriteRes::getRenderOffset() const {
 	int bmp_x, bmp_y;
 
 	// 左上を原点としたときのピボット座標（ビットマップ座標系）
-	if (mPivotInPixels) {
-		bmp_x = (int)mPivot.x;
-		bmp_y = (int)mPivot.y;
+	if (m_PivotInPixels) {
+		bmp_x = (int)m_Pivot.x;
+		bmp_y = (int)m_Pivot.y;
 	} else {
-		bmp_x = (int)(mAtlasW * mPivot.x);
-		bmp_y = (int)(mAtlasH * mPivot.y);
+		bmp_x = (int)(m_AtlasW * m_Pivot.x);
+		bmp_y = (int)(m_AtlasH * m_Pivot.y);
 	}
 
 	// 左下を原点としたときのピボット座標（オブジェクト座標系）
 	int obj_x = bmp_x;
-	int obj_y = mAtlasH - bmp_y;
+	int obj_y = m_AtlasH - bmp_y;
 		
 	// 基準点を現在のスプライトオブジェクトの原点に合わせるためのオフセット量
 	return KVec3(-obj_x, -obj_y, 0);
@@ -299,12 +298,12 @@ KVec3 KSpriteRes::getRenderOffset() const {
 KVec3 KSpriteRes::bmpToLocal(const KVec3 &bmp) const {
 	// ピクセル単位でのピボット座標
 	KVec3 piv;
-	if (mPivotInPixels) {
-		piv.x = mPivot.x;
-		piv.y = mPivot.y;
+	if (m_PivotInPixels) {
+		piv.x = m_Pivot.x;
+		piv.y = m_Pivot.y;
 	} else {
-		piv.x = mAtlasW * mPivot.x;
-		piv.y = mAtlasH * mPivot.y;
+		piv.x = m_AtlasW * m_Pivot.x;
+		piv.y = m_AtlasH * m_Pivot.y;
 	}
 	KVec3 off = bmp - piv;
 	off.y = -off.y; // BMP座標はY軸下向きなので、これを上向きに直す
@@ -337,21 +336,21 @@ bool KSpriteRes::buildFromImageEx(int img_w, int img_h, const KPath &texture_nam
 	K__ASSERT(0 <= pivot_y && pivot_y <= atlas_h);
 
 	// スプライト構築
-	mImageW = img_w;
-	mImageH = img_h;
-	mAtlasX = atlas_x;
-	mAtlasY = atlas_y;
-	mAtlasW = atlas_w;
-	mAtlasH = atlas_h;
-	mPivot.x = pivot_x;
-	mPivot.y = pivot_y;
-	mPivotInPixels = true;
-	mUsingPackedTexture = packed;
-	mPaletteCount = 0; // K_PALETTE_IMAGE_SIZE
-	mMesh = KMesh();
-	mSubMeshIndex = image_index; // <-- 何番目の画像を取り出すか？
-	mTextureName = texture_name;
-	mDefaultBlend = blend;
+	m_ImageW = img_w;
+	m_ImageH = img_h;
+	m_AtlasX = atlas_x;
+	m_AtlasY = atlas_y;
+	m_AtlasW = atlas_w;
+	m_AtlasH = atlas_h;
+	m_Pivot.x = pivot_x;
+	m_Pivot.y = pivot_y;
+	m_PivotInPixels = true;
+	m_UsingPackedTexture = packed;
+	m_PaletteCount = 0; // K_PALETTE_IMAGE_SIZE
+	m_Mesh = KMesh();
+	m_SubMeshIndex = image_index; // <-- 何番目の画像を取り出すか？
+	m_TextureName = texture_name;
+	m_DefaultBlend = blend;
 	return true;
 }
 bool KSpriteRes::buildFromPng(const void *png_data, int png_size, const KPath &texname) {
@@ -376,46 +375,46 @@ bool KSpriteRes::buildFromPng(const void *png_data, int png_size, const KPath &t
 
 #pragma region KClipImpl
 KClipRes::KClipRes(const std::string &name) {
-	mName = name;
-	mEditInfoXml = nullptr;
+	m_Name = name;
+	m_EditInfoXml = nullptr;
 	clear();
 }
 KClipRes::~KClipRes() {
 	clear();
 }
 void KClipRes::clear() {
-	mFlags = 0;
-	for (int i=0; i<(int)mKeys.size(); i++) {
-		K_Drop(mKeys[i].xml_data);
+	m_Flags = 0;
+	for (int i=0; i<(int)m_Keys.size(); i++) {
+		K__DROP(m_Keys[i].xml_data);
 	}
-	mLength = 0;
-	mKeys.clear();
-	K_Drop(mEditInfoXml);
+	m_Length = 0;
+	m_Keys.clear();
+	K__DROP(m_EditInfoXml);
 }
 const char * KClipRes::getName() const {
-	return mName.u8();
+	return m_Name.u8();
 }
 int KClipRes::getLength() const {
-	return mLength;
+	return m_Length;
 }
 bool KClipRes::getFlag(KClipRes::Flag f) const {
-	return (mFlags & f) != 0;
+	return (m_Flags & f) != 0;
 }
 void KClipRes::setFlag(KClipRes::Flag f, bool value) {
 	if (value) {
-		mFlags |= f;
+		m_Flags |= f;
 	} else {
-		mFlags &= ~f;
+		m_Flags &= ~f;
 	}
 }
 void KClipRes::setTag(KName tag) {
-	KNameList_pushback_unique(mTags, tag);
+	KNameList_pushback_unique(m_Tags, tag);
 }
 bool KClipRes::hasTag(KName tag) const {
-	return KNameList_contains(mTags, tag);
+	return KNameList_contains(m_Tags, tag);
 }
 const KNameList & KClipRes::getTags() const {
-	return mTags;
+	return m_Tags;
 }
 
 static std::string _MarkToString(KMark mark, KMark next) {
@@ -445,20 +444,20 @@ static std::string _MarkToString(KMark mark, KMark next) {
 // <EdgeAnimation> タグ向けに保存する
 // EDGEファイルからロードすることが前提なので、EDGEを見ればわかるような内容は保存しない
 void KClipRes::saveForEdge(KXmlElement *xml, const KPath &homeDir) {
-	KPath edge_name = mEdgeFile.getRelativePathFrom(homeDir);
-	KPath clip_name = mName.getRelativePathFrom(homeDir);
+	KPath edge_name = m_EdgeFile.getRelativePathFrom(homeDir);
+	KPath clip_name = m_Name.getRelativePathFrom(homeDir);
 
 	xml->setAttrString("file", edge_name.u8()); // source edge file name
 	xml->setAttrString("name", clip_name.u8()); // this clip name
-	if (mFlags & FLAG_LOOP) {
+	if (m_Flags & FLAG_LOOP) {
 		xml->setAttrInt("loop", 1);
 	}
-	if (mFlags & FLAG_KILL_SELF) {
+	if (m_Flags & FLAG_KILL_SELF) {
 		xml->setAttrInt("autokill", 1);
 	}
-	if (mEditInfoXml) {
-		K__ASSERT(mEditInfoXml->hasTag("EditInfo"));
-		xml->addChild(mEditInfoXml);
+	if (m_EditInfoXml) {
+		K__ASSERT(m_EditInfoXml->hasTag("EditInfo"));
+		xml->addChild(m_EditInfoXml);
 	}
 
 	for (int i=0; i<getKeyCount(); i++) {
@@ -486,7 +485,7 @@ void KClipRes::saveForEdge(KXmlElement *xml, const KPath &homeDir) {
 			elm->removeAttr("next_clip");
 		}
 
-		if (key->edge_name.empty() || key->edge_name.compare(mEdgeFile) == 0) {
+		if (key->edge_name.empty() || key->edge_name.compare(m_EdgeFile) == 0) {
 			// このページでは、クリップ元Edgeファイルと同じ画像を使っている
 			elm->removeAttr("extern_edge");
 			elm->removeAttr("extern_page");
@@ -513,17 +512,17 @@ void KClipRes::saveForEdge(KXmlElement *xml, const KPath &homeDir) {
 
 // <Clip> タグ向けに保存する。レイヤーの内容やスプライトファイル名もすべて記録する
 void KClipRes::saveForClip(KXmlElement *xml, const KPath &homeDir) {
-	KPath file = mEdgeFile.getRelativePathFrom(homeDir);
+	KPath file = m_EdgeFile.getRelativePathFrom(homeDir);
 	xml->setAttrString("name", file.u8());
-	if (mFlags & FLAG_LOOP) {
+	if (m_Flags & FLAG_LOOP) {
 		xml->setAttrInt("loop", 1);
 	}
-	if (mFlags & FLAG_KILL_SELF) {
+	if (m_Flags & FLAG_KILL_SELF) {
 		xml->setAttrInt("autokill", 1);
 	}
-	if (mEditInfoXml) {
-		K__ASSERT(mEditInfoXml->hasTag("EditInfo"));
-		xml->addChild(mEditInfoXml);
+	if (m_EditInfoXml) {
+		K__ASSERT(m_EditInfoXml->hasTag("EditInfo"));
+		xml->addChild(m_EditInfoXml);
 	}
 	for (int i=0; i<getKeyCount(); i++) {
 		const SPRITE_KEY *key = getKey(i);
@@ -580,8 +579,8 @@ void KClipRes::saveForClip(KXmlElement *xml, const KPath &homeDir) {
 void KClipRes::on_track_gui_state(float frame) {
 #ifndef NO_IMGUI
 	int framenumber = 0;
-	for (size_t i=0; i<mKeys.size(); i++) {
-		const SPRITE_KEY &key = mKeys[i];
+	for (size_t i=0; i<m_Keys.size(); i++) {
+		const SPRITE_KEY &key = m_Keys[i];
 		if ((framenumber <= frame) && (frame < framenumber + key.duration)) {
 			KImGui::PushTextColor(KImGui::COLOR_WARNING);
 		} else {
@@ -599,9 +598,9 @@ void KClipRes::on_track_gui_state(float frame) {
 void KClipRes::on_track_gui() {
 #ifndef NO_IMGUI
 	// アニメーションカーブをエクスポートする
-	for (size_t ki=0; ki<mKeys.size(); ki++) {
+	for (size_t ki=0; ki<m_Keys.size(); ki++) {
 		if (ImGui::TreeNode(KImGui::ID(ki), "Page[%d]", ki)) {
-			const SPRITE_KEY &key = mKeys[ki];
+			const SPRITE_KEY &key = m_Keys[ki];
 			ImGui::Text("Dur : %d", key.duration);
 			ImGui::Text("ThisMark: %d", key.this_mark);
 			ImGui::Text("NextMark: %d", key.next_mark);
@@ -624,10 +623,10 @@ void KClipRes::on_track_gui() {
 	}
 	if (ImGui::Button("Export")) {
 		std::string s;
-		s += K::str_sprintf("Num pages: %d\n", mKeys.size());
-		for (size_t ki=0; ki<mKeys.size(); ki++) {
+		s += K::str_sprintf("Num pages: %d\n", m_Keys.size());
+		for (size_t ki=0; ki<m_Keys.size(); ki++) {
 			s += K::str_sprintf("Page[%d] {\n", ki);
-			const SPRITE_KEY &key = mKeys[ki];
+			const SPRITE_KEY &key = m_Keys[ki];
 			s += K::str_sprintf("\tDur : %d\n", key.duration);
 
 			s += K::str_sprintf("\tThisMark: %d\n", key.this_mark);
@@ -649,8 +648,9 @@ void KClipRes::on_track_gui() {
 		}
 		s += '\n';
 
-		KOutputStream output = KOutputStream::fromFileName("~sprite_curve.txt");
-		output.write(s.data(), s.size());
+		KOutputStream file;
+		file.openFileName("~sprite_curve.txt");
+		file.write(s.data(), s.size());
 	}
 #endif // !NO_IMGUI
 }
@@ -692,8 +692,8 @@ KClipRes::SPRITE_KEY * KClipRes::getKeyByFrame(float frame) {
 }
 int KClipRes::findPageByMark(int mark) const {
 	if (mark > 0) {
-		for (int i=0; i<(int)mKeys.size(); i++) {
-			if (mKeys[i].this_mark == mark) {
+		for (int i=0; i<(int)m_Keys.size(); i++) {
+			if (m_Keys[i].this_mark == mark) {
 				return i;
 			}
 		}
@@ -705,46 +705,46 @@ void KClipRes::addKey(const KClipRes::SPRITE_KEY &key, int pos) {
 		INVALID_OPERATION;
 		return;
 	}
-	if (0 <= pos && pos < (int)mKeys.size()) {
-		mKeys.insert(mKeys.begin() + pos, key);
+	if (0 <= pos && pos < (int)m_Keys.size()) {
+		m_Keys.insert(m_Keys.begin() + pos, key);
 	} else {
-		mKeys.push_back(key);
+		m_Keys.push_back(key);
 	}
 	recalculateKeyTimes();
 }
 void KClipRes::deleteKey(int index) {
-	if (0 <= index && index < (int)mKeys.size()) {
-		K_Drop(mKeys[index].xml_data);
-		mKeys.erase(mKeys.begin() + index);
+	if (0 <= index && index < (int)m_Keys.size()) {
+		K__DROP(m_Keys[index].xml_data);
+		m_Keys.erase(m_Keys.begin() + index);
 		recalculateKeyTimes();
 	}
 }
 const KClipRes::SPRITE_KEY * KClipRes::getKey(int index) const {
-	if (0 <= index && index < (int)mKeys.size()) {
-		return &mKeys[index];
+	if (0 <= index && index < (int)m_Keys.size()) {
+		return &m_Keys[index];
 	}
 	return nullptr;
 }
 KClipRes::SPRITE_KEY * KClipRes::getKey(int index) {
-	if (0 <= index && index < (int)mKeys.size()) {
-		return &mKeys[index];
+	if (0 <= index && index < (int)m_Keys.size()) {
+		return &m_Keys[index];
 	}
 	return nullptr;
 }
 int KClipRes::getKeyTime(int index) const {
-	if (0 <= index && index < (int)mKeys.size()) {
-		return mKeys[index].time;
+	if (0 <= index && index < (int)m_Keys.size()) {
+		return m_Keys[index].time;
 	} else {
 		INVALID_OPERATION;
 		return 0;
 	}
 }
 int KClipRes::getKeyCount() const {
-	return mKeys.size();
+	return m_Keys.size();
 }
 int KClipRes::getMaxLayerCount() const {
 	int bound = 0;
-	for (auto it=mKeys.begin(); it!=mKeys.end(); ++it) {
+	for (auto it=m_Keys.begin(); it!=m_Keys.end(); ++it) {
 		if (it->num_layers > bound) {
 			bound = it->num_layers;
 		}
@@ -758,15 +758,15 @@ int KClipRes::getPageByFrame(float frame, int *out_pageframe, int *out_pagedur) 
 	}
 	int fr0 = 0;
 	int fr1 = 0;
-	for (size_t i=0; i<mKeys.size(); i++) {
+	for (size_t i=0; i<m_Keys.size(); i++) {
 		fr0 = fr1;
-		fr1 += mKeys[i].duration;
+		fr1 += m_Keys[i].duration;
 		if (frame < fr1) {
 			if (out_pageframe) {
 				*out_pageframe = (int)(frame - fr0);
 			}
 			if (out_pagedur) {
-				*out_pagedur = mKeys[i].duration;
+				*out_pagedur = m_Keys[i].duration;
 			}
 			return i;
 		}
@@ -777,18 +777,18 @@ int KClipRes::getPageByFrame(float frame, int *out_pageframe, int *out_pagedur) 
 		*out_pageframe = (int)(frame - fr0);
 	}
 	if (out_pagedur) {
-		if (mKeys.empty()) {
+		if (m_Keys.empty()) {
 			*out_pagedur = 0;
 		} else {
-			*out_pagedur = mKeys.back().duration;
+			*out_pagedur = m_Keys.back().duration;
 		}
 	}
-	return (int)mKeys.size() - 1;
+	return (int)m_Keys.size() - 1;
 }
 int KClipRes::getSpritesInPage(int page, int max_layers, KPath *layer_sprite_names) const {
 	if (page < 0) return 0;
-	if (page >= (int)mKeys.size()) return 0;
-	const SPRITE_KEY &key = mKeys[page];
+	if (page >= (int)m_Keys.size()) return 0;
+	const SPRITE_KEY &key = m_Keys[page];
 	int n = KMath::min(max_layers, key.num_layers);
 	for (int i=0; i<n; i++) {
 		layer_sprite_names[i] = key.layers[i].sprite;
@@ -797,8 +797,8 @@ int KClipRes::getSpritesInPage(int page, int max_layers, KPath *layer_sprite_nam
 }
 int KClipRes::getLayerCount(int page) const {
 	if (page < 0) return 0;
-	if (page >= (int)mKeys.size()) return 0;
-	return mKeys[page].num_layers;
+	if (page >= (int)m_Keys.size()) return 0;
+	return m_Keys[page].num_layers;
 }
 bool KClipRes::getNextPage(int page, int mark, std::string *p_new_clip, int *p_new_page) const {
 	K__ASSERT(page >= 0);
@@ -836,11 +836,11 @@ bool KClipRes::getNextPage(int page, int mark, std::string *p_new_clip, int *p_n
 }
 void KClipRes::recalculateKeyTimes() {
 	int t = 0;
-	for (auto it=mKeys.begin(); it!=mKeys.end(); ++it) {
+	for (auto it=m_Keys.begin(); it!=m_Keys.end(); ++it) {
 		it->time = t;
 		t += it->duration;
 	}
-	mLength = t;
+	m_Length = t;
 }
 #pragma endregion // KClipRes
 
@@ -849,34 +849,34 @@ void KClipRes::recalculateKeyTimes() {
 
 #pragma region KTextureRes
 KTextureRes::KTextureRes() {
-	mTexId = nullptr;
-	mProtected = false;
-	mWidth = 0;
-	mHeight = 0;
-	mIsRenderTex = 0;
+	m_TexId = nullptr;
+	m_Protected = false;
+	m_Width = 0;
+	m_Height = 0;
+	m_IsRenderTex = 0;
 }
 void KTextureRes::release() {
-	if (mTexId) {
-		K__VERBOSE("Del texture: %s", mName.u8());
-		KVideo::deleteTexture(mTexId);
-		mTexId = nullptr;
+	if (m_TexId) {
+		K__VERBOSE("Del texture: %s", m_Name.u8());
+		KVideo::deleteTexture(m_TexId);
+		m_TexId = nullptr;
 	}
 }
 bool KTextureRes::loadEmptyTexture(int w, int h, KTexture::Format fmt, bool protect) {
-	mWidth = w;
-	mHeight = h;
-	mIsRenderTex = false;
-	mTexId = KVideo::createTexture(w, h, fmt);
-	mProtected = protect;
-	return mTexId != nullptr;
+	m_Width = w;
+	m_Height = h;
+	m_IsRenderTex = false;
+	m_TexId = KVideo::createTexture(w, h, fmt);
+	m_Protected = protect;
+	return m_TexId != nullptr;
 }
 bool KTextureRes::loadRenderTexture(int w, int h, KTexture::Format fmt, bool protect) {
-	mWidth = w;
-	mHeight = h;
-	mIsRenderTex = true;
-	mTexId = KVideo::createRenderTexture(w, h, fmt);
-	mProtected = protect;
-	return mTexId != nullptr;
+	m_Width = w;
+	m_Height = h;
+	m_IsRenderTex = true;
+	m_TexId = KVideo::createRenderTexture(w, h, fmt);
+	m_Protected = protect;
+	return m_TexId != nullptr;
 }
 #pragma endregion // KTextureRes
 
@@ -884,16 +884,16 @@ bool KTextureRes::loadRenderTexture(int w, int h, KTexture::Format fmt, bool pro
 
 #pragma region KShaderRes
 KShaderRes::KShaderRes() {
-	mShaderId = nullptr;
+	m_ShaderId = nullptr;
 }
 void KShaderRes::clear() {
-	mShaderId = nullptr;
+	m_ShaderId = nullptr;
 }
 KSHADERID KShaderRes::getId() {
-	return mShaderId;
+	return m_ShaderId;
 }
 void KShaderRes::release() {
-	KVideo::deleteShader(mShaderId);
+	KVideo::deleteShader(m_ShaderId);
 	clear();
 }
 bool KShaderRes::loadFromHLSL(const char *name, const char *code) {
@@ -904,7 +904,7 @@ bool KShaderRes::loadFromHLSL(const char *name, const char *code) {
 		KLog::printError("E_SHADER: failed to build HLSL shader.");
 		return false;
 	}
-	mShaderId = sh;
+	m_ShaderId = sh;
 	return true;
 }
 bool KShaderRes::loadFromStream(KInputStream &input, const char *name) {
@@ -930,7 +930,7 @@ KFontRes::~KFontRes() {
 void KFontRes::release() {
 }
 bool KFontRes::loadFromFont(KFont &font) {
-	mFont = font;
+	m_Font = font;
 	return true;
 }
 bool KFontRes::loadFromStream(KInputStream &input, int ttc_index) {
@@ -962,8 +962,8 @@ bool KFontRes::loadFromSystemFontDirectory(const char *filename, int ttc_index) 
 #pragma region CTextureBankImpl
 #define NAME_SEPARATOR  '&'
 class CTextureBankImpl: public KTextureBank {
-	std::unordered_map<std::string, KAutoRef<KTextureRes>> m_items;
-	mutable std::recursive_mutex m_mutex;
+	std::unordered_map<std::string, KAutoRef<KTextureRes>> m_Items;
+	mutable std::recursive_mutex m_Mutex;
 public:
 	CTextureBankImpl() {
 	}
@@ -973,16 +973,16 @@ public:
 	void init() {
 	}
 	KTextureAuto findById(KTEXID sid) const {
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			const KTextureAuto &sh = it->second;
-			if (sh->mTexId == sid) {
+			if (sh->m_TexId == sid) {
 				return sh;
 			}
 		}
 		return nullptr;
 	}
 	KTextureAuto findByName(const KPath &name) const {
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			if (it->first == name.toUtf8()) {
 				return it->second;
 			}
@@ -990,143 +990,143 @@ public:
 		return nullptr;
 	}
 	virtual int getTextureCount() override { 
-		return (int)m_items.size();
+		return (int)m_Items.size();
 	}
 	virtual std::vector<std::string> getTextureNameList() override {
 		std::vector<std::string> names;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			names.reserve(m_items.size());
-			for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+			names.reserve(m_Items.size());
+			for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 				names.push_back(it->first);
 			}
 			std::sort(names.begin(), names.end());
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return names;
 	}
 	virtual std::vector<std::string> getRenderTextureNameList() override {
 		std::vector<std::string> names;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+			for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 				KAutoRef<KTextureRes> texres = it->second;
-				if (texres->mIsRenderTex) {
-					names.push_back(texres->mName.u8());
+				if (texres->m_IsRenderTex) {
+					names.push_back(texres->m_Name.u8());
 				}
 			}
 			std::sort(names.begin(), names.end());
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return names;
 	}
 	virtual void clearTextures(bool remove_protected_textures) override {
-		m_mutex.lock();
-		for (auto it=m_items.begin(); it!=m_items.end(); /*++it*/) {
+		m_Mutex.lock();
+		for (auto it=m_Items.begin(); it!=m_Items.end(); /*++it*/) {
 			KAutoRef<KTextureRes> texres = it->second;
-			if (!remove_protected_textures && texres->mProtected) {
+			if (!remove_protected_textures && texres->m_Protected) {
 				// 保護テクスチャ。削除してはいけない
 				it++;
 			} else {
 				texres->release();
-				it = m_items.erase(it);
+				it = m_Items.erase(it);
 			}
 		} 
-	//	m_items.clear();
-		m_mutex.unlock();
+	//	m_Items.clear();
+		m_Mutex.unlock();
 	}
 	virtual void removeTexture(KTEXID texid) override {
-		m_mutex.lock();
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		m_Mutex.lock();
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			auto texres = it->second;
-			if (texres->mTexId == texid) {
+			if (texres->m_TexId == texid) {
 				texres->release();
-				m_items.erase(it);
+				m_Items.erase(it);
 				break;
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void removeTexture(const KPath &name) override {
-		m_mutex.lock();
-		auto it = m_items.find(name.u8());
-		if (it != m_items.end()) {
+		m_Mutex.lock();
+		auto it = m_Items.find(name.u8());
+		if (it != m_Items.end()) {
 			it->second->release();
-			m_items.erase(it);
+			m_Items.erase(it);
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void removeTexturesByTag(const std::string &_tag) override {
 		KName tag = _tag;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			for (auto it=m_items.begin(); it!=m_items.end(); /*none*/) {
+			for (auto it=m_Items.begin(); it!=m_Items.end(); /*none*/) {
 				KTextureRes *tex = it->second;
 				if (tex->hasTag(tag)) {
 					tex->release();
-					it = m_items.erase(it);
+					it = m_Items.erase(it);
 				} else {
 					it++;
 				}
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual bool hasTexture(const KPath &name) const override {
-		m_mutex.lock();
-		bool ret = m_items.find(name.u8()) != m_items.end();
-		m_mutex.unlock();
+		m_Mutex.lock();
+		bool ret = m_Items.find(name.u8()) != m_Items.end();
+		m_Mutex.unlock();
 		return ret;
 	}
 
 	virtual void setProtect(KTEXID id, bool value) override {
 		KTextureAuto sh = findById(id);
 		if (sh != nullptr) {
-			sh->mProtected = value;
+			sh->m_Protected = value;
 		}
 	}
 	virtual bool getProtect(KTEXID id) override {
 		KTextureAuto sh = findById(id);
 		if (sh != nullptr) {
-			return sh->mProtected;
+			return sh->m_Protected;
 		}
 		return false;
 	}
 
 	virtual void setTag(KTEXID id, KName tag) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KTextureAuto sh = findById(id);
 			if (sh != nullptr) {
 				sh->addTag(tag);
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual bool hasTag(KTEXID id, KName tag) const override {
 		bool result = false;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KTextureAuto sh = findById(id);
 			if (sh != nullptr && sh->hasTag(tag)) {
 				result = true;
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return result;
 	}
 	virtual const KNameList & getTags(KTEXID id) const override {
 		static KNameList s_empty;
 
 		KNameList &result = s_empty;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KTextureAuto sh = findById(id);
 			if (sh != nullptr) {
 				result = sh->getTags();
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return result;
 	}
 
@@ -1139,15 +1139,15 @@ public:
 
 	virtual KPath getTextureName(KTEXID tex) const override {
 		KPath name;
-		m_mutex.lock();
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		m_Mutex.lock();
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			auto texres = it->second;
-			if (texres->mTexId == tex) {
-				name = texres->mName;
+			if (texres->m_TexId == tex) {
+				name = texres->m_Name;
 				break;
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return name;
 	}
 	virtual bool isRenderTexture(const KPath &tex_path) override {
@@ -1165,16 +1165,16 @@ public:
 			return nullptr;
 		}
 		KTEXID ret = nullptr;
-		m_mutex.lock();
-		auto it = m_items.find(name.u8());
-		if (it != m_items.end()) {
-			ret = it->second->mTexId;
+		m_Mutex.lock();
+		auto it = m_Items.find(name.u8());
+		if (it != m_Items.end()) {
+			ret = it->second->m_TexId;
 		} else if (should_exist) {
 			// もしかして:
 			// 大小文字を区別しない、フォルダ名部分を無視して比較してみる。
 			// それで見つかった場合、名前の指定を間違えている可能性がある
 			std::string probably;
-			for (auto it2=m_items.begin(); it2!=m_items.end(); it2++) {
+			for (auto it2=m_Items.begin(); it2!=m_Items.end(); it2++) {
 				if (K::pathEndsWith(it2->first, name.u8())) {
 					probably = it2->first;
 					break;
@@ -1190,7 +1190,7 @@ public:
 				KLog::printError(u8"E_TEX: テクスチャ '%s' はロードされていません。もしかして: '%s'", name.u8(), probably.c_str());
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return ret;
 	}
 	virtual KPath makeTextureNameWithModifier(const KPath &name, int modifier) const override {
@@ -1214,14 +1214,14 @@ public:
 	}
 	virtual void clearTextureModifierCaches() override {
 		std::vector<std::string> texnames;
-		m_mutex.lock();
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		m_Mutex.lock();
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			const std::string &name = it->first;
 			if (getTextureModifier(name)) {
 				texnames.push_back(name); // 削除対象
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 
 		for (auto it=texnames.begin(); it!=texnames.end(); ++it) {
 			removeTexture(*it);
@@ -1229,8 +1229,8 @@ public:
 	}
 	virtual void clearTextureModifierCaches(int modifier_start, int count) override {
 		std::vector<std::string> texnames;
-		m_mutex.lock();
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		m_Mutex.lock();
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			const std::string &name = it->first;
 			int mod = getTextureModifier(name);
 			if (getTextureModifier(name)) {
@@ -1239,7 +1239,7 @@ public:
 				}
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 
 		for (auto it=texnames.begin(); it!=texnames.end(); ++it) {
 			removeTexture(*it);
@@ -1288,10 +1288,10 @@ public:
 
 		if (flags & F_OVERWRITE_ANYWAY) {
 			KAutoRef<KTextureRes> texres;
-			m_mutex.lock();
+			m_Mutex.lock();
 			{
 				// 同名のテクスチャが存在する場合には無条件で上書きする
-				if (m_items.find(name.u8()) != m_items.end()) {
+				if (m_Items.find(name.u8()) != m_Items.end()) {
 					KLog::printWarning("W_TEXTURE_OVERWRITE: Texture named '%s' already exists. The texture is overritten by new one", name.u8());
 					removeTexture(name);
 				}
@@ -1302,18 +1302,19 @@ public:
 					(flags & F_PROTECT)!=0
 				);
 				texres->setName(name);
-				m_items[name.u8()] = texres;
+				m_Items[name.u8()] = texres;
+				K__VERBOSE("Add Render Texture: '%s'", name.c_str());
 			}
-			m_mutex.unlock();
-			return texres->mTexId;
+			m_Mutex.unlock();
+			return texres->m_TexId;
 		}
 
 		{
 			KTEXID tex = nullptr;
 
-			m_mutex.lock();
-			auto it = m_items.find(name.u8());
-			if (it==m_items.end() || it->second->mTexId==nullptr) {
+			m_Mutex.lock();
+			auto it = m_Items.find(name.u8());
+			if (it==m_Items.end() || it->second->m_TexId==nullptr) {
 				//
 				// 同名のテクスチャはまだ存在しない
 				//
@@ -1325,12 +1326,13 @@ public:
 					(flags & F_PROTECT)!=0
 				);
 				texres->setName(name);
-				m_items[name.u8()] = texres;
-				tex = texres->mTexId;
+				m_Items[name.u8()] = texres;
+				K__VERBOSE("Add Render Texture: '%s'", name.c_str());
+				tex = texres->m_TexId;
 
 			} else {
 				KAutoRef<KTextureRes> oldres = it->second;
-				if (! oldres->mIsRenderTex) {
+				if (! oldres->m_IsRenderTex) {
 					//
 					// 既に同じ名前の非レンダーテクスチャが存在する
 					//
@@ -1347,15 +1349,16 @@ public:
 							(flags & F_PROTECT)!=0
 						);
 						texres->setName(name);
-						m_items[name.u8()] = texres;
-						tex = texres->mTexId;
+						m_Items[name.u8()] = texres;
+						K__VERBOSE("Add Render Texture: '%s'", name.c_str());
+						tex = texres->m_TexId;
 					
 					} else {
 						// 使いまわしできない
 						KLog::printError("incompatible texture found (type not matched): '%s'", name.u8());
 					}
 
-				} else if (oldres->mWidth != w || oldres->mHeight != h) {
+				} else if (oldres->m_Width != w || oldres->m_Height != h) {
 					//
 					// 既に同じ名前で異なるサイズのレンダーテクスチャが存在する
 					//
@@ -1372,8 +1375,9 @@ public:
 							(flags & F_PROTECT)!=0
 						);
 						texres->setName(name);
-						m_items[name.u8()] = texres;
-						tex = texres->mTexId;
+						m_Items[name.u8()] = texres;
+						tex = texres->m_TexId;
+						K__VERBOSE("Add Render Texture: '%s'", name.c_str());
 
 					} else {
 						// 使いまわしできない
@@ -1384,10 +1388,10 @@ public:
 					//
 					// 既に同じ名前で同じサイズのレンダーテクスチャが存在する
 					//
-					tex = oldres->mTexId;
+					tex = oldres->m_TexId;
 				}
 			}
-			m_mutex.unlock();
+			m_Mutex.unlock();
 			return tex;
 		}
 	}
@@ -1401,29 +1405,30 @@ public:
 			return nullptr;
 		}
 		KTEXID tex = nullptr;
-		m_mutex.lock();
-		auto it = m_items.find(name.u8());
-		if (it!=m_items.end() && it->second->mTexId!=nullptr) {
+		m_Mutex.lock();
+		auto it = m_Items.find(name.u8());
+		if (it!=m_Items.end() && it->second->m_TexId!=nullptr) {
 			KAutoRef<KTextureRes> &texres = it->second;
-			if (texres->mIsRenderTex) {
+			if (texres->m_IsRenderTex) {
 				// 同じ名前のテクスチャが存在するが、レンダーターゲットとして作成されているために使いまわしできない
 				KLog::printError("E_TEXBANK: Incompatible texture found (type not matched): '%s", name.u8());
-			} else if (texres->mWidth != w || texres->mHeight != h) {
+			} else if (texres->m_Width != w || texres->m_Height != h) {
 				// 同じ名前のテクスチャが存在するが、サイズが変わった
 				// KLog::printWarning("E_TEXBANK: textur size changed: '%s'", name.u8());
-				tex = texres->mTexId;
+				tex = texres->m_TexId;
 			} else {
-				tex = texres->mTexId;
+				tex = texres->m_TexId;
 			}
 		} else {
 			KAutoRef<KTextureRes> texres;
 			texres.make();
 			texres->loadEmptyTexture(w, h);
 			texres->setName(name);
-			m_items[name.u8()] = texres;
-			tex = texres->mTexId;
+			m_Items[name.u8()] = texres;
+			tex = texres->m_TexId;
+			K__VERBOSE("Add Texture: '%s'", name.c_str());
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 
 		return tex;
 	}
@@ -1669,8 +1674,8 @@ public:
 
 #pragma region CSpriteBankImpl
 class CSpriteBankImpl: public KSpriteBank {
-	std::unordered_map<std::string, KSpriteAuto> m_items;
-	mutable std::recursive_mutex m_mutex;
+	std::unordered_map<std::string, KSpriteAuto> m_Items;
+	mutable std::recursive_mutex m_Mutex;
 	KTextureBank *m_texbank;
 public:
 	CSpriteBankImpl() {
@@ -1684,50 +1689,50 @@ public:
 		m_texbank = tex_bank;
 	}
 	virtual int getSpriteCount() override {
-		return (int)m_items.size();
+		return (int)m_Items.size();
 	}
 	virtual void removeSprite(const KPath &name) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			auto it = m_items.find(name.u8());
-			if (it != m_items.end()) {
-				m_items.erase(it);
+			auto it = m_Items.find(name.u8());
+			if (it != m_Items.end()) {
+				m_Items.erase(it);
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void removeSpritesByTag(const std::string &_tag) override {
 		KName tag = _tag;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			for (auto it=m_items.begin(); it!=m_items.end(); /*none*/) {
+			for (auto it=m_Items.begin(); it!=m_Items.end(); /*none*/) {
 				KSpriteRes *sprite = it->second;
 				if (sprite->hasTag(tag)) {
-					it = m_items.erase(it);
+					it = m_Items.erase(it);
 				} else {
 					it++;
 				}
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void clearSprites() override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			m_items.clear();
+			m_Items.clear();
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual bool hasSprite(const KPath &name) const override {
-		m_mutex.lock();
-		bool ret = m_items.find(name.u8()) != m_items.end();
-		m_mutex.unlock();
+		m_Mutex.lock();
+		bool ret = m_Items.find(name.u8()) != m_Items.end();
+		m_Mutex.unlock();
 		return ret;
 	}
 	virtual void guiSpriteBank(KTextureBank *texbank) override {
 	#ifndef NO_IMGUI
-		m_mutex.lock();
-		if (ImGui::TreeNode("Sprites", "Sprites (%d)", m_items.size())) {
+		m_Mutex.lock();
+		if (ImGui::TreeNode("Sprites", "Sprites (%d)", m_Items.size())) {
 			if (ImGui::Button("Clear")) {
 				clearSprites();
 			}
@@ -1743,17 +1748,17 @@ public:
 
 			// ソート済みスプライト名一覧
 			std::vector<std::string> names;
-			names.reserve(m_items.size());
+			names.reserve(m_Items.size());
 			if (s_filter[0]) {
 				// フィルターあり
-				for (auto it=m_items.cbegin(); it!=m_items.cend(); ++it) {
+				for (auto it=m_Items.cbegin(); it!=m_Items.cend(); ++it) {
 					if (it->first.find(s_filter, 0) != std::string::npos) {
 						names.push_back(it->first);
 					}
 				}
 			} else {
 				// フィルターなし
-				for (auto it=m_items.cbegin(); it!=m_items.cend(); ++it) {
+				for (auto it=m_Items.cbegin(); it!=m_Items.cend(); ++it) {
 					names.push_back(it->first);
 				}
 			}
@@ -1785,7 +1790,7 @@ public:
 			}
 			ImGui::TreePop();
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	#endif // !NO_IMGUI
 	}
 	virtual void guiSpriteInfo(const KPath &name, KTextureBank *texbank) override {
@@ -1796,33 +1801,33 @@ public:
 			return;
 		}
 #if 1
-		KTEXID texid = texbank->findTexture(sprite->mTextureName, 0, false);
+		KTEXID texid = texbank->findTexture(sprite->m_TextureName, 0, false);
 		KTexture::Desc desc;
 		KVideo::tex_getDesc(texid, &desc);
 		ImGui::Text("Source image size: %d x %d", desc.original_w, desc.original_h);
 #else
-		ImGui::Text("Source image size: %d x %d", sprite->mImageW, sprite->mImageH);
+		ImGui::Text("Source image size: %d x %d", sprite->m_ImageW, sprite->m_ImageH);
 #endif
-		ImGui::Text("Atlas Pos : %d, %d", sprite->mAtlasX, sprite->mAtlasY);
-		ImGui::Text("Atlas Size: %d, %d", sprite->mAtlasW, sprite->mAtlasH);
-		if (sprite->mSubMeshIndex >= 0) {
-			ImGui::Text("SubMesh index: %d", sprite->mSubMeshIndex);
+		ImGui::Text("Atlas Pos : %d, %d", sprite->m_AtlasX, sprite->m_AtlasY);
+		ImGui::Text("Atlas Size: %d, %d", sprite->m_AtlasW, sprite->m_AtlasH);
+		if (sprite->m_SubMeshIndex >= 0) {
+			ImGui::Text("SubMesh index: %d", sprite->m_SubMeshIndex);
 		} else {
 			ImGui::Text("SubMesh index: ALL");
 		}
 		if (1) {
-			ImGui::DragFloat2("Pivot", (float*)&sprite->mPivot);
-			ImGui::Checkbox("Pivot in pixels", &sprite->mPivotInPixels);
-			ImGui::Text("Packed : %s", sprite->mUsingPackedTexture ? "Yes" : "No");
+			ImGui::DragFloat2("Pivot", (float*)&sprite->m_Pivot);
+			ImGui::Checkbox("Pivot in pixels", &sprite->m_PivotInPixels);
+			ImGui::Text("Packed : %s", sprite->m_UsingPackedTexture ? "Yes" : "No");
 		}
 		if (1) {
-			if (ImGui::TreeNode(KImGui::ID(1), "Tex: %s", sprite->mTextureName.u8())) {
+			if (ImGui::TreeNode(KImGui::ID(1), "Tex: %s", sprite->m_TextureName.u8())) {
 				guiSpriteTextureInfo(name, texbank);
 				ImGui::TreePop();
 			}
 		}
 		// 描画時のスプライト画像を再現
-		if (sprite->mUsingPackedTexture) {
+		if (sprite->m_UsingPackedTexture) {
 			KPath sprite_path = name;
 			KPath original_tex_path = KGamePath::getTextureAssetPath(sprite_path);
 			KPath escpath = KGamePath::escapeFileName(original_tex_path);
@@ -1831,7 +1836,7 @@ public:
 			if (texbank && ImGui::Button("Export sprite image")) {
 				KImage img = exportSpriteImage(sprite_path, texbank, 0, nullptr);
 				if (!img.empty() && img.saveToFileName(export_filename.u8())) {
-					KLog::printInfo("Export texture image '%s' in '%s' ==> %s", original_tex_path.u8(), sprite->mTextureName.u8(), export_filename.u8());
+					KLog::printInfo("Export texture image '%s' in '%s' ==> %s", original_tex_path.u8(), sprite->m_TextureName.u8(), export_filename.u8());
 				}
 			}
 
@@ -1850,16 +1855,16 @@ public:
 		KPath tex_path;
 		const KSpriteAuto sp = findSprite(sprite_path, should_exist);
 		if (sp == nullptr) return nullptr;
-		if (sp->mUsingPackedTexture) {
+		if (sp->m_UsingPackedTexture) {
 			// スプライトには、ブロック化テクスチャが指定されている
-			const KPath &bctex_path = sp->mTextureName;
+			const KPath &bctex_path = sp->m_TextureName;
 
 			// このスプライトの本来の画像を復元したものを保持するためのテクスチャ名
 			tex_path = KGamePath::getTextureAssetPath(sprite_path);
 
 		} else {
 			// スプライトには通常テクスチャが割り当てられている
-			tex_path = sp->mTextureName;
+			tex_path = sp->m_TextureName;
 		}
 		// 得られた組み合わせで作成されたテクスチャを得る
 		return texbank->getTextureEx(tex_path, modifier, should_exist, nullptr);
@@ -1875,7 +1880,7 @@ public:
 			KLog::printError("Failed to exportSpriteImage: No sprite named '%s'", sprite_path.u8());
 			return KImage();
 		}
-		const KMesh *mesh = &sp->mMesh;
+		const KMesh *mesh = &sp->m_Mesh;
 		if (mesh == nullptr) {
 			KLog::printError("Failed to exportSpriteImage: No mesh in '%s'", sprite_path.u8());
 			return KImage();
@@ -1888,21 +1893,21 @@ public:
 			KLog::printError("Failed to exportSpriteImage: No submeshes in '%s", sprite_path.u8());
 			return KImage();
 		}
-	//	KTexture *tex = KVideo::findTexture(texbank->findTextureRaw(sp->mTextureName, false));
-		KTexture *tex = KVideo::findTexture(texbank->findTexture(sp->mTextureName, modofier, false, node_for_mod));
+	//	KTexture *tex = KVideo::findTexture(texbank->findTextureRaw(sp->m_TextureName, false));
+		KTexture *tex = KVideo::findTexture(texbank->findTexture(sp->m_TextureName, modofier, false, node_for_mod));
 		if (tex == nullptr) {
-			KLog::printError("Failed to exportSpriteImage: No texture named '%s'", sp->mTextureName.u8());
+			KLog::printError("Failed to exportSpriteImage: No texture named '%s'", sp->m_TextureName.u8());
 			return KImage();
 		}
 
 		// 実際のテクスチャ画像を取得。ブロック化されている場合はこの画像がパズル状態になっている
 		KImage raw_img = tex->exportTextureImage();
 		if (raw_img.empty()) {
-			KLog::printError("Failed to exportSpriteImage: Failed to Texture::exportImage() for texture '%s'", sp->mTextureName.u8());
+			KLog::printError("Failed to exportSpriteImage: Failed to Texture::exportImage() for texture '%s'", sp->m_TextureName.u8());
 			return KImage();
 		}
 		// 完成画像の保存先
-		KImage image = KImage::createFromPixels(sp->mAtlasW, sp->mAtlasH, KColorFormat_RGBA32, nullptr);
+		KImage image = KImage::createFromPixels(sp->m_AtlasW, sp->m_AtlasH, KColorFormat_RGBA32, nullptr);
 		// 元の画像を復元する
 		export_sprite_image(image, raw_img, sp, mesh);
 		// 終了
@@ -1941,17 +1946,17 @@ public:
 				int bottom = (int)p2.y;
 				if (bottom < top) {
 					// 左下を原点とした座標を使っている
-					top    = sprite->mImageH - top;
-					bottom = sprite->mImageH - bottom;
+					top    = sprite->m_ImageH - top;
+					bottom = sprite->m_ImageH - bottom;
 				}
 				// 必ずひとつ以上のピクセルを含んでいる。
 				// 元画像が不透明ピクセルを一切含んでいない場合は、そもそもメッシュが生成されないはず
 				K__ASSERT(left < right);
 				K__ASSERT(top < bottom);
-				if (! sprite->mUsingPackedTexture) {
+				if (! sprite->m_UsingPackedTexture) {
 					// 元画像が中途半端なサイズだった場合、ブロックが元画像範囲からはみ出ている場合がある事に注意
-					if (sprite->mImageW < right ) right  = sprite->mImageW;
-					if (sprite->mImageH < bottom) bottom = sprite->mImageH;
+					if (sprite->m_ImageW < right ) right  = sprite->m_ImageW;
+					if (sprite->m_ImageH < bottom) bottom = sprite->m_ImageH;
 				}
 				const KVec2 t0 = mesh->getTexCoord(i + 0);
 				const KVec2 t1 = mesh->getTexCoord(i + 1);
@@ -1990,17 +1995,17 @@ public:
 					int bottom = (int)p2.y;
 					if (bottom < top) {
 						// 左下を原点とした座標を使っている
-						top    = sprite->mImageH - top;
-						bottom = sprite->mImageH - bottom;
+						top    = sprite->m_ImageH - top;
+						bottom = sprite->m_ImageH - bottom;
 					}
 					// 必ずひとつ以上のピクセルを含んでいる。
 					// 元画像が不透明ピクセルを一切含んでいない場合は、そもそもメッシュが生成されないはず
 					K__ASSERT(left < right);
 					K__ASSERT(top < bottom);
-					if (! sprite->mUsingPackedTexture) {
+					if (! sprite->m_UsingPackedTexture) {
 						// 元画像が中途半端なサイズだった場合、ブロックが元画像範囲からはみ出ている場合がある事に注意
-						if (sprite->mImageW < right ) right  = sprite->mImageW;
-						if (sprite->mImageH < bottom) bottom = sprite->mImageH;
+						if (sprite->m_ImageW < right ) right  = sprite->m_ImageW;
+						if (sprite->m_ImageH < bottom) bottom = sprite->m_ImageH;
 					}
 					const KVec2 t0 = mesh->getTexCoord(i + 0);
 					const KVec2 t1 = mesh->getTexCoord(i + 1);
@@ -2032,17 +2037,17 @@ public:
 					int bottom = (int)p3.y;
 					if (bottom < top) {
 						// 左下を原点とした座標を使っている
-						top    = sprite->mImageH - top;
-						bottom = sprite->mImageH - bottom;
+						top    = sprite->m_ImageH - top;
+						bottom = sprite->m_ImageH - bottom;
 					}
 					// 必ずひとつ以上のピクセルを含んでいる。
 					// 元画像が不透明ピクセルを一切含んでいない場合は、そもそもメッシュが生成されないはず
 					K__ASSERT(left < right);
 					K__ASSERT(top < bottom);
-					if (! sprite->mUsingPackedTexture) {
+					if (! sprite->m_UsingPackedTexture) {
 						// 元画像が中途半端なサイズだった場合、ブロックが元画像範囲からはみ出ている場合がある事に注意
-						if (sprite->mImageW < right ) right  = sprite->mImageW;
-						if (sprite->mImageH < bottom) bottom = sprite->mImageH;
+						if (sprite->m_ImageW < right ) right  = sprite->m_ImageW;
+						if (sprite->m_ImageH < bottom) bottom = sprite->m_ImageH;
 					}
 					const KVec2 t0 = mesh->getTexCoord(i + 0);
 					const KVec2 t1 = mesh->getTexCoord(i + 1);
@@ -2063,7 +2068,7 @@ public:
 		KSpriteAuto sprite = findSprite(name, false);
 		if (sprite != nullptr) {
 			K__ASSERT(texbank);
-			texbank->guiTexture(sprite->mTextureName, THUMBNAIL_SIZE);
+			texbank->guiTexture(sprite->m_TextureName, THUMBNAIL_SIZE);
 		}
 	}
 	virtual bool guiSpriteSelector(const char *label, KPath *path) override {
@@ -2080,9 +2085,9 @@ public:
 	}
 	virtual KSpriteAuto findSprite(const KPath &name, bool should_exist) override {
 		KSpriteAuto sp = nullptr;
-		m_mutex.lock();
-		auto it = m_items.find(name.u8());
-		if (it != m_items.end()) {
+		m_Mutex.lock();
+		auto it = m_Items.find(name.u8());
+		if (it != m_Items.end()) {
 			sp = it->second;
 			K__ASSERT(sp != nullptr);
 		} else if (should_exist) {
@@ -2090,7 +2095,7 @@ public:
 			// 例えば "player.sprite" は "chara/player.sprite" とはマッチしない。
 			// ディレクトリ名を忘れているかどうかチェックする
 			KPath probably;
-			for (auto it2=m_items.begin(); it2!=m_items.end(); it2++) {
+			for (auto it2=m_Items.begin(); it2!=m_Items.end(); it2++) {
 				if (K::pathEndsWith(it2->first, name.u8())) {
 					probably = it2->first;
 					break;
@@ -2113,13 +2118,13 @@ public:
 				);
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return sp;
 	}
 	virtual bool setSpriteTexture(const KPath &name, const KPath &texture) override {
 		KSpriteAuto sp = findSprite(name, false);
 		if (sp != nullptr) {
-			sp->mTextureName = texture;
+			sp->m_TextureName = texture;
 			return true;
 		}
 		return false;
@@ -2130,58 +2135,58 @@ public:
 
 		K__ASSERT_RETURN_ZERO(m_texbank);
 
-		KTexture *tex = KVideo::findTexture(m_texbank->findTextureRaw(sp->mTextureName, true));
+		KTexture *tex = KVideo::findTexture(m_texbank->findTextureRaw(sp->m_TextureName, true));
 		if (tex) {
 			int texw = tex->getWidth();
 			int texh = tex->getHeight();
-			*u0 = (float)sp->mAtlasX / texw;
-			*v0 = (float)sp->mAtlasY / texh;
-			*u1 = (float)(sp->mAtlasX + sp->mAtlasW) / texw;
-			*v1 = (float)(sp->mAtlasY + sp->mAtlasH) / texh;
+			*u0 = (float)sp->m_AtlasX / texw;
+			*v0 = (float)sp->m_AtlasY / texh;
+			*u1 = (float)(sp->m_AtlasX + sp->m_AtlasW) / texw;
+			*v1 = (float)(sp->m_AtlasY + sp->m_AtlasH) / texh;
 			return tex->getId();
 		}
 		return nullptr;
 	}
 	virtual bool addSpriteFromDesc(const KPath &name, KSpriteAuto sp, bool update_mesh) override {
 		if (name.empty()) { K__ERROR("Sprite name is empty"); return false; }
-		if (sp->mTextureName.empty()) { K__ERROR("Texture name is empty"); return false; }
-		if (sp->mAtlasW == 0 || sp->mAtlasH == 0) { K__ERROR("Sprite size is zero"); return false; }
+		if (sp->m_TextureName.empty()) { K__ERROR("Texture name is empty"); return false; }
+		if (sp->m_AtlasW == 0 || sp->m_AtlasH == 0) { K__ERROR("Sprite size is zero"); return false; }
 
 		if (hasSprite(name)) return false;
 
 		// 同名のリソースがあれば削除する
 		removeSprite(name);
 
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			m_items[name.u8()] = sp;
+			m_Items[name.u8()] = sp;
 			K__VERBOSE("ADD_SPRITE: %s", name.u8());
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 
 		if (update_mesh) {
-			KSpriteAuto item = m_items[name.u8()];
-			if (item->mMesh.getVertexCount() == 0) {
+			KSpriteAuto item = m_Items[name.u8()];
+			if (item->m_Mesh.getVertexCount() == 0) {
 				K__ASSERT(m_texbank);
 				updateSpriteMesh(item, m_texbank);
 			} else {
-				item->mMesh.copyFrom(&sp->mMesh);
+				item->m_Mesh.copyFrom(&sp->m_Mesh);
 			}
 		}
 		return true;
 	}
 	virtual bool addSpriteFromTextureRect(const KPath &sprite_name, const KPath &tex_name, int x, int y, int w, int h, int ox, int oy) override {
 		KSpriteRes *sp = new KSpriteRes();
-		sp->mTextureName = tex_name;
-	//	sp->mImageW = img.getWidth();
-	//	sp->mImageH = img.getHeight();
-		sp->mAtlasX = x;
-		sp->mAtlasY = y;
-		sp->mAtlasW = w;
-		sp->mAtlasH = h;
-		sp->mPivot.x = (float)ox;
-		sp->mPivot.y = (float)oy;
-		sp->mPivotInPixels = true;
+		sp->m_TextureName = tex_name;
+	//	sp->m_ImageW = img.getWidth();
+	//	sp->m_ImageH = img.getHeight();
+		sp->m_AtlasX = x;
+		sp->m_AtlasY = y;
+		sp->m_AtlasW = w;
+		sp->m_AtlasH = h;
+		sp->m_Pivot.x = (float)ox;
+		sp->m_Pivot.y = (float)oy;
+		sp->m_PivotInPixels = true;
 		bool ret = addSpriteFromDesc(sprite_name, KSpriteAuto(sp), true);
 		sp->drop();
 		return ret;
@@ -2197,11 +2202,11 @@ public:
 		bool ok = false;
 		KSpriteRes *sp = new KSpriteRes();
 		if (sp->buildFromImageEx(img.getWidth(), img.getHeight(), tex_name, -1, KBlend_INVALID, false)) {
-			sp->mPivot.x = (float)ox;
-			sp->mPivot.y = (float)oy;
-			sp->mPivotInPixels = true;
-			K__ASSERT(sp->mAtlasW > 0);
-			K__ASSERT(sp->mAtlasH > 0);
+			sp->m_Pivot.x = (float)ox;
+			sp->m_Pivot.y = (float)oy;
+			sp->m_PivotInPixels = true;
+			K__ASSERT(sp->m_AtlasW > 0);
+			K__ASSERT(sp->m_AtlasH > 0);
 			if (addSpriteFromDesc(spr_name, KSpriteAuto(sp), true)) {
 				ok = true;
 			}
@@ -2215,7 +2220,7 @@ private:
 		K__ASSERT(tbank);
 
 		// インデックスなし。ただの png ファイルを参照する
-		const KPath &tex_name = sp->mTextureName;
+		const KPath &tex_name = sp->m_TextureName;
 		KTexture *tex = KVideo::findTexture(tbank->findTextureRaw(tex_name, true));
 		K__ASSERT_RETURN(tex);
 		
@@ -2225,17 +2230,17 @@ private:
 		int x = 0;
 		int y = 0;
 
-		int tx0 = sp->mAtlasX;
-		int ty0 = sp->mAtlasY;
-		int tx1 = sp->mAtlasX + sp->mAtlasW;
-		int ty1 = sp->mAtlasY + sp->mAtlasH;
+		int tx0 = sp->m_AtlasX;
+		int ty0 = sp->m_AtlasY;
+		int tx1 = sp->m_AtlasX + sp->m_AtlasW;
+		int ty1 = sp->m_AtlasY + sp->m_AtlasH;
 
 		float u0 = (float)tx0 / tex_w;
 		float v0 = (float)ty0 / tex_h;
 		float u1 = (float)tx1 / tex_w;
 		float v1 = (float)ty1 / tex_h;
 
-		MeshShape::makeRect(&sp->mMesh, KVec2(x, y), KVec2(x+sp->mAtlasW, y+sp->mAtlasH), KVec2(u0, v0), KVec2(u1, v1), KColor32::WHITE);
+		MeshShape::makeRect(&sp->m_Mesh, KVec2(x, y), KVec2(x+sp->m_AtlasW, y+sp->m_AtlasH), KVec2(u0, v0), KVec2(u1, v1), KColor32::WHITE);
 	}
 };
 #pragma endregion // CSpriteBankImpl
@@ -2243,8 +2248,8 @@ private:
 
 #pragma region CShaderBankImpl
 class CShaderBankImpl: public KShaderBank {
-	std::unordered_map<KPath, KShaderAuto> m_items;
-	mutable std::recursive_mutex m_mutex;
+	std::unordered_map<KPath, KShaderAuto> m_Items;
+	mutable std::recursive_mutex m_Mutex;
 	bool m_hlsl_available;
 	bool m_glsl_available;
 public:
@@ -2256,7 +2261,7 @@ public:
 		clearShaders();
 	}
 	KShaderAuto findById(KSHADERID sid) const {
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			const KShaderAuto &sh = it->second;
 			if (sh->getId() == sid) {
 				return sh;
@@ -2265,7 +2270,7 @@ public:
 		return nullptr;
 	}
 	KShaderAuto findByName(const KPath &name) const {
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			if (it->first == name) {
 				return it->second;
 			}
@@ -2283,18 +2288,18 @@ public:
 	virtual KPath getShaderName(KSHADERID s) const override {
 		const KShaderAuto &sh = findById(s);
 		KPath name;
-		m_mutex.lock();
+		m_Mutex.lock();
 		if (sh != nullptr) {
-			name = sh->mName;
+			name = sh->m_Name;
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return name;
 	}
 	virtual std::vector<std::string> getShaderNameList() const override {
 		std::vector<std::string> names;
 		{
-			names.reserve(m_items.size());
-			for (auto it=m_items.cbegin(); it!=m_items.cend(); ++it) {
+			names.reserve(m_Items.size());
+			for (auto it=m_Items.cbegin(); it!=m_Items.cend(); ++it) {
 				names.push_back(it->first.u8());
 			}
 			std::sort(names.begin(), names.end());
@@ -2302,53 +2307,53 @@ public:
 		return names;
 	}
 	virtual void setTag(KSHADERID id, KName tag) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KShaderAuto sh = findById(id);
 			if (sh != nullptr) {
 				sh->addTag(tag);
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual bool hasTag(KSHADERID id, KName tag) const override {
 		bool result = false;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KShaderAuto sh = findById(id);
 			if (sh != nullptr && sh->hasTag(tag)) {
 				result = true;
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return result;
 	}
 	virtual const KNameList & getTags(KSHADERID id) const override {
 		static KNameList s_empty;
 
 		KNameList &result = s_empty;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			KShaderAuto sh = findById(id);
 			if (sh != nullptr) {
 				result = sh->getTags();
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return result;
 	}
 	virtual void addShader(const KPath &name, KShaderAuto shader) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			auto it = m_items.find(name);
-			if (it != m_items.end()) {
+			auto it = m_Items.find(name);
+			if (it != m_Items.end()) {
 				KShaderAuto &sh = it->second;
 				sh->release(); // 同名のシェーダーが存在する。古いものを削除する
 			}
 			shader->addTag(name.u8()); // 作成元のファイル名をタグとして追加しておく setTag
-			m_items[name] = shader;
+			m_Items[name] = shader;
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual KSHADERID addShaderFromHLSL(const KPath &name, const char *code) override {
 		KSHADERID sid = nullptr;
@@ -2375,67 +2380,67 @@ public:
 			KLog::printError("E_SHADER: failed to build GLSL shader.");
 			return nullptr;
 		}
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			if (m_items.find(name) != m_items.end()) {
+			if (m_Items.find(name) != m_Items.end()) {
 				// 同名のシェーダーが存在する。古いものを削除する
-				m_video->deleteShader(m_items[name]);
+				m_video->deleteShader(m_Items[name]);
 			}
-			m_items[name] = sh;
+			m_Items[name] = sh;
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return sh;
 #else
 		return nullptr;
 #endif
 	}
 	virtual int getShaderCount() const override { 
-		return (int)m_items.size();
+		return (int)m_Items.size();
 	}
 	virtual void removeShader(const KPath &name) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			auto it = m_items.find(name);
-			if (it != m_items.end()) {
+			auto it = m_Items.find(name);
+			if (it != m_Items.end()) {
 				KShaderAuto &sh = it->second;
 				sh->release();
-				m_items.erase(it);
+				m_Items.erase(it);
 				K__VERBOSE("Del shader: %s", name.u8());
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void removeShadersByTag(KName tag) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			for (auto it=m_items.begin(); it!=m_items.end(); /*no expr*/) {
+			for (auto it=m_Items.begin(); it!=m_Items.end(); /*no expr*/) {
 				KShaderAuto &sh = it->second;
 				if (sh->hasTag(tag)) {
 					sh->release();
 					K__VERBOSE("Del shader: %s (by tag \"%s\")", it->first.u8(), tag.c_str());
-					it = m_items.erase(it);
+					it = m_Items.erase(it);
 				} else {
 					it++;
 				}
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void clearShaders() override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+			for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 				KShaderAuto &sh = it->second;
 				sh->release();
 			}
-			m_items.clear();
+			m_Items.clear();
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual bool hasShader(const KPath &name) const override {
-		m_mutex.lock();
-		bool ret = m_items.find(name) != m_items.end();
-		m_mutex.unlock();
+		m_Mutex.lock();
+		bool ret = m_Items.find(name) != m_Items.end();
+		m_Mutex.unlock();
 		return ret;
 	}
 	virtual KSHADERID findShader(const KPath &name, bool should_exist) override {
@@ -2447,14 +2452,14 @@ public:
 	}
 	virtual KShaderAuto findShaderAuto(const KPath &name, bool should_exist) override {
 		KShaderAuto ret = nullptr;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
-			auto it = m_items.find(name);
-			if (it != m_items.end()) {
+			auto it = m_Items.find(name);
+			if (it != m_Items.end()) {
 				ret = it->second;
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		if (ret != nullptr) return ret;
 		if (should_exist) {
 			KLog::printError("No shader named '%s'", name.u8());
@@ -2495,17 +2500,17 @@ public:
 #pragma region KAnimationBank
 class CAnimationBank: public KAnimationBank {
 	std::unordered_map<KPath, KClipRes *> m_clips;
-	mutable std::recursive_mutex m_mutex;
+	mutable std::recursive_mutex m_Mutex;
 public:
 	virtual void clearClipResources() override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			for (auto it=m_clips.begin(); it!=m_clips.end(); ++it) {
-				K_Drop(it->second);
+				K__DROP(it->second);
 			}
 			m_clips.clear();
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void addClipResource(const std::string &name, KClipRes *clip) override {
 		if (clip == nullptr) {
@@ -2513,7 +2518,7 @@ public:
 			return;
 		}
 
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			if (m_clips.find(name) != m_clips.end()) {
 				KLog::printInfo("W_CLIP_OVERWRITE: %s", name.c_str());
@@ -2524,11 +2529,11 @@ public:
 			m_clips[name] = clip;
 			KLog::printVerbose("ADD_CLIP: %s", name.c_str());
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 
 	}
 	virtual void removeClipResource(const std::string &name) override {
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			auto it = m_clips.find(name);
 			if (it != m_clips.end()) {
@@ -2536,11 +2541,11 @@ public:
 				m_clips.erase(it);
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual void removeClipResourceByTag(const std::string &_tag) override {
 		KName tag = _tag;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			for (auto it=m_clips.begin(); it!=m_clips.end(); /*none*/) {
 				KClipRes *clip = it->second;
@@ -2552,16 +2557,16 @@ public:
 				}
 			}
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 	}
 	virtual KClipRes * getClipResource(const std::string &name) const override {
 		KClipRes *ret;
-		m_mutex.lock();
+		m_Mutex.lock();
 		{
 			auto it = m_clips.find(name);
 			ret = (it!=m_clips.end()) ? it->second : nullptr;
 		}
-		m_mutex.unlock();
+		m_Mutex.unlock();
 		return ret;
 	}
 	virtual KClipRes * find_clip(const std::string &clipname) override {
@@ -2669,41 +2674,41 @@ public:
 
 #pragma region LuaBank
 KLuaBank::KLuaBank() {
-	m_cb = nullptr;
+	m_Cb = nullptr;
 }
 KLuaBank::~KLuaBank() {
 	clear();
 }
 void KLuaBank::setStorage(KStorage &storage) {
-	m_storage = storage;
+	m_Storage = storage;
 }
 void KLuaBank::setCallback(KLuaBankCallback *cb) {
-	m_cb = cb;
+	m_Cb = cb;
 }
 lua_State * KLuaBank::addEmptyScript(const std::string &name) {
 	KLog::printDebug("LUA_BANK: new script '%s'", name.c_str());
 	lua_State *ls = luaL_newstate();
 	luaL_openlibs(ls);
-	m_mutex.lock();
+	m_Mutex.lock();
 	{
-		if (m_items.find(name) != m_items.end()) {
+		if (m_Items.find(name) != m_Items.end()) {
 			KLog::printWarning("W_SCRIPT_OVERWRITE: Resource named '%s' already exists. The resource data will be overwriten by new one", name.c_str());
 			this->remove(name);
 		}
-		K__ASSERT(m_items[name] == nullptr);
-		m_items[name] = ls;
+		K__ASSERT(m_Items[name] == nullptr);
+		m_Items[name] = ls;
 	}
-	m_mutex.unlock();
+	m_Mutex.unlock();
 	return ls;
 }
 lua_State * KLuaBank::findScript(const std::string &name) const {
 	lua_State *ret;
-	m_mutex.lock();
+	m_Mutex.lock();
 	{
-		auto it = m_items.find(name);
-		ret = (it!=m_items.end()) ? it->second : nullptr;
+		auto it = m_Items.find(name);
+		ret = (it!=m_Items.end()) ? it->second : nullptr;
 	}
-	m_mutex.unlock();
+	m_Mutex.unlock();
 	return ret;
 }
 bool KLuaBank::addScript(const std::string &name, const std::string &code) {
@@ -2727,7 +2732,7 @@ bool KLuaBank::addScript(const std::string &name, const std::string &code) {
 	}
 
 	// チャンク実行よりも前にライブラリをインストールしたい時などに使う
-	if (m_cb) m_cb->on_luabank_load(ls, name);
+	if (m_Cb) m_Cb->on_luabank_load(ls, name);
 
 	// 再外周のチャンクを実行し、グローバル変数名や関数名を解決する
 	if (lua_pcall(ls, 0, 0, 0) != LUA_OK) {
@@ -2749,7 +2754,7 @@ lua_State * KLuaBank::queryScript(const std::string &name, bool reload) {
 
 	lua_State *ls = findScript(name);
 	if (ls == nullptr) {
-		std::string bin = m_storage.loadBinary(name.c_str());
+		std::string bin = m_Storage.loadBinary(name.c_str());
 		if (addScript(name, bin)) {
 			ls = findScript(name);
 		}
@@ -2764,36 +2769,36 @@ lua_State * KLuaBank::makeThread(const std::string &name) {
 
 bool KLuaBank::contains(const std::string &name) const {
 	bool ret;
-	m_mutex.lock();
+	m_Mutex.lock();
 	{
-		ret = m_items.find(name) != m_items.end();
+		ret = m_Items.find(name) != m_Items.end();
 	}
-	m_mutex.unlock();
+	m_Mutex.unlock();
 	return ret;
 }
 void KLuaBank::remove(const std::string &name) {
-	m_mutex.lock();
+	m_Mutex.lock();
 	{
-		auto it = m_items.find(name);
-		if (it != m_items.end()) {
+		auto it = m_Items.find(name);
+		if (it != m_Items.end()) {
 			lua_State *ls = it->second;
 			lua_close(ls);
 			KLog::printDebug("LUA_BANK: remove '%s'", name.c_str());
-			m_items.erase(it);
+			m_Items.erase(it);
 		}
 	}
-	m_mutex.unlock();
+	m_Mutex.unlock();
 }
 void KLuaBank::clear() {
-	m_mutex.lock();
+	m_Mutex.lock();
 	{
-		for (auto it=m_items.begin(); it!=m_items.end(); ++it) {
+		for (auto it=m_Items.begin(); it!=m_Items.end(); ++it) {
 			lua_State *ls = it->second;
 			lua_close(ls);
 		}
-		m_items.clear();
+		m_Items.clear();
 	}
-	m_mutex.unlock();
+	m_Mutex.unlock();
 }
 #pragma endregion // KLuaBank
 
@@ -2855,9 +2860,9 @@ public:
 	}
 	virtual bool addFontFromFileName(const std::string &alias, const std::string &filename, int ttc_index, bool should_exists, KFont *out_font) override {
 		// ファイルをロード
-		KInputStream input = KInputStream::fromFileName(filename);
-		if (input.isOpen()) {
-			if (addFontFromStream(alias, input, filename, ttc_index, out_font)) {
+		KInputStream file;
+		if (file.openFileName(filename)) {
+			if (addFontFromStream(alias, file, filename, ttc_index, out_font)) {
 				return true;
 			}
 		}
@@ -3359,7 +3364,7 @@ private:
 /// 各ページのレイヤーやスプライト設定などを行って KClipRes を作成するためのクラス。
 /// ページやレイヤーを順不同で設定できるため、順番どおりに push_back 等する必要がない
 class CLayeredSpriteClipBuilder {
-	std::vector<KClipRes::SPRITE_KEY> mKeys;
+	std::vector<KClipRes::SPRITE_KEY> m_Keys;
 	bool mLoop;
 	bool mAutoKill;
 public:
@@ -3368,8 +3373,8 @@ public:
 		mAutoKill = false;
 	}
 	~CLayeredSpriteClipBuilder() {
-		for (int i=0; i<(int)mKeys.size(); i++) {
-			K_Drop(mKeys[i].xml_data);
+		for (int i=0; i<(int)m_Keys.size(); i++) {
+			K__DROP(m_Keys[i].xml_data);
 		}
 	}
 	void setLoop(bool value) {
@@ -3455,19 +3460,19 @@ public:
 		KClipRes *clip = new KClipRes(name);
 		clip->setFlag(KClipRes::FLAG_LOOP, mLoop);
 		clip->setFlag(KClipRes::FLAG_KILL_SELF, mAutoKill);
-		for (auto it=mKeys.begin(); it!=mKeys.end(); ++it) {
-			K_Grab(it->xml_data);
+		for (auto it=m_Keys.begin(); it!=m_Keys.end(); ++it) {
+			K__GRAB(it->xml_data);
 			clip->addKey(*it);
 		}
 		return clip;
 	}
 private:
 	KClipRes::SPRITE_KEY * getkey(int page) {
-		if (page < (int)mKeys.size()) {
-			return &mKeys[page];
+		if (page < (int)m_Keys.size()) {
+			return &m_Keys[page];
 		} else {
-			mKeys.resize(page + 1);
-			return &mKeys[page];
+			m_Keys.resize(page + 1);
+			return &m_Keys[page];
 		}
 	}
 };
@@ -3613,8 +3618,8 @@ bool KGamePath::isSafeAssetChar(char c) {
 #pragma region KGameImagePack
 void KGameImagePack::makeSpritelistFromPack(const KImgPackR &pack, const KImage &pack_image, const KPath &tex_name, KSpriteList *sprites) {
 
-	sprites->m_tex_name = tex_name;
-	sprites->m_tex_image = pack_image;
+	sprites->m_TexName = tex_name;
+	sprites->m_TexImage = pack_image;
 
 	int num_images = pack.getImageCount();
 	int tex_w = pack_image.getWidth();
@@ -3628,45 +3633,45 @@ void KGameImagePack::makeSpritelistFromPack(const KImgPackR &pack, const KImage 
 		// スプライト作成
 		KSpriteRes *sp = new KSpriteRes();
 		{
-			sp->mImageW = img_w;
-			sp->mImageH = img_h;
-			sp->mAtlasX = 0;
-			sp->mAtlasY = 0;
-			sp->mAtlasW = img_w;
-			sp->mAtlasH = img_h;
-			sp->mPivot.x = img_w / 2.0f; // テクスチャではなく、切り取ったアトラス範囲内での座標であることに注意
-			sp->mPivot.y = img_h / 2.0f;
-			sp->mPivotInPixels = true;
-			sp->mUsingPackedTexture = true;
-			sp->mPaletteCount = 0; // K_PALETTE_IMAGE_SIZE
-			sp->mMesh = KMesh();
-			sp->mSubMeshIndex = ii; // <-- 何番目の画像を取り出すか？
-			sp->mTextureName = tex_name;
-			sp->mDefaultBlend = (KBlend)extra.blend; // Edge側で指定されたブレンド。("@blend=add" など) 未指定の場合は KBlend_INVALID
+			sp->m_ImageW = img_w;
+			sp->m_ImageH = img_h;
+			sp->m_AtlasX = 0;
+			sp->m_AtlasY = 0;
+			sp->m_AtlasW = img_w;
+			sp->m_AtlasH = img_h;
+			sp->m_Pivot.x = img_w / 2.0f; // テクスチャではなく、切り取ったアトラス範囲内での座標であることに注意
+			sp->m_Pivot.y = img_h / 2.0f;
+			sp->m_PivotInPixels = true;
+			sp->m_UsingPackedTexture = true;
+			sp->m_PaletteCount = 0; // K_PALETTE_IMAGE_SIZE
+			sp->m_Mesh = KMesh();
+			sp->m_SubMeshIndex = ii; // <-- 何番目の画像を取り出すか？
+			sp->m_TextureName = tex_name;
+			sp->m_DefaultBlend = (KBlend)extra.blend; // Edge側で指定されたブレンド。("@blend=add" など) 未指定の場合は KBlend_INVALID
 		}
 		// メッシュを作成
 		{
-			int num_vertices = pack.getVertexCount(sp->mSubMeshIndex);
+			int num_vertices = pack.getVertexCount(sp->m_SubMeshIndex);
 			if (num_vertices > 0) {
-				const KVec3 *p = pack.getPositionArray(tex_w, tex_h, sp->mSubMeshIndex);
-				const KVec2 *t = pack.getTexCoordArray(tex_w, tex_h, sp->mSubMeshIndex);
-				sp->mMesh.setVertexCount(num_vertices);
-				sp->mMesh.setPositions(0, p, sizeof(KVec3), num_vertices);
-				sp->mMesh.setTexCoords(0, t, sizeof(KVec2), num_vertices);
-				sp->mMesh.setColorInts(0, &KColor32::WHITE, 0, num_vertices); // stride=0 means copy from single value
+				const KVec3 *p = pack.getPositionArray(tex_w, tex_h, sp->m_SubMeshIndex);
+				const KVec2 *t = pack.getTexCoordArray(tex_w, tex_h, sp->m_SubMeshIndex);
+				sp->m_Mesh.setVertexCount(num_vertices);
+				sp->m_Mesh.setPositions(0, p, sizeof(KVec3), num_vertices);
+				sp->m_Mesh.setTexCoords(0, t, sizeof(KVec2), num_vertices);
+				sp->m_Mesh.setColorInts(0, &KColor32::WHITE, 0, num_vertices); // stride=0 means copy from single value
 			}
 			KSubMesh sub;
 			sub.start = 0;
 			sub.count = num_vertices;
 			sub.primitive = KPrimitive_TRIANGLES;
-			sp->mMesh.addSubMesh(sub);
+			sp->m_Mesh.addSubMesh(sub);
 		}
 
 		KSpriteList::ITEM item;
 		item.def = sp;
 		item.page = extra.page;
 		item.layer = extra.layer;
-		sprites->m_items.push_back(item);
+		sprites->m_Items.push_back(item);
 
 		sp->drop();
 	}
@@ -3874,8 +3879,8 @@ bool KGameEdgeBuilder::loadFromStream(KEdgeDocument *edge, KInputStream &file, c
 bool KGameEdgeBuilder::loadFromFileInMemory(KEdgeDocument *edge, const void *data, size_t size, const std::string &debugname) {
 	K__ASSERT(edge);
 	bool ret = false;
-	KInputStream file = KInputStream::fromMemory(data, size);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openMemory(data, size)) {
 		ret = loadFromStream(edge, file, debugname);
 	} else {
 		KLog::printError("E_MEM_READER_FAIL: %s", debugname.c_str());
@@ -3885,8 +3890,8 @@ bool KGameEdgeBuilder::loadFromFileInMemory(KEdgeDocument *edge, const void *dat
 bool KGameEdgeBuilder::loadFromFileName(KEdgeDocument *edge, const std::string &filename) {
 	K__ASSERT(edge);
 	bool ret = false;
-	KInputStream file = KInputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(filename)) {
 		ret = loadFromStream(edge, file, filename);
 	} else {
 		KLog::printError("E_EDGE_FAIL: STREAM ERROR: %s", filename.c_str());
@@ -3968,8 +3973,8 @@ private:
 			KLog::printError("File does not exist: %s", nameInDataDir.c_str());
 			return false;
 		}
-		KInputStream file = KInputStream::fromFileName(nameInDataDir);
-		if (!file.isOpen()) {
+		KInputStream file;
+		if (!file.openFileName(nameInDataDir)) {
 			KLog::printError("Failed to open file: %s", nameInDataDir.c_str());
 			return false;
 		}
@@ -4093,11 +4098,11 @@ static CAutoFile g_autolog("__contents.csv");
 class CBankUpdator {
 public:
 	CBankUpdator() {
-		mFlags = 0;
+		m_Flags = 0;
 	}
 	bool update(const std::string &bankDir, const std::string &dataDir, KPathList *p_updated_files, KGameUpdateBankFlags flags) {
 		uint32_t starttime = K::clockMsec32();
-		mFlags = flags;
+		m_Flags = flags;
 
 		KLog::printInfo("Update bank");
 		if (bankDir.empty()) { KLog::printError("bankDir cannot be empty"); return false; }
@@ -4106,7 +4111,7 @@ public:
 		// 生データフォルダは必須
 		if (!K::pathIsDir(dataDir)) {
 			KLog::printError("Data directory does not exist: %s", dataDir.c_str());
-			mFlags = 0;
+			m_Flags = 0;
 			return false;
 		}
 
@@ -4114,7 +4119,7 @@ public:
 		// （少なくとも、データフォルダ内にあるサブフォルダは必ずバンクフォルダ内にも存在するように）
 		if (!updateBankDir(bankDir, dataDir)) {
 			KLog::printError("Bank directory does not exist: %s", bankDir.c_str());
-			mFlags = 0;
+			m_Flags = 0;
 			return false;
 		}
 
@@ -4140,34 +4145,35 @@ public:
 
 		// 管理データを保存する
 		if (xDoc) {
-			KOutputStream file = KOutputStream::fromFileName(xmlBankName);
+			KOutputStream file;
+			file.openFileName(xmlBankName);
 			xDoc->writeDoc(file);
 		}
-		K_Drop(xDoc);
+		K__DROP(xDoc);
 		KLog::printInfo("Bank updated (%d msec)", K::clockMsec32() - starttime);
-		mFlags = 0;
+		m_Flags = 0;
 		return true;
 	}
 
 private:
-	KGameUpdateBankFlags mFlags;
+	KGameUpdateBankFlags m_Flags;
 
 	class ScanFiles: public KDirectoryWalker::Callback {
 	public:
 		KPathList mFiles;
-		virtual void onDir(const char *name_u8, const char *parent_u8, bool *enter) override {
-			*enter = true; // 再帰処理する
+		virtual void onDir(const std::string &name_u8, const std::string &parent_u8, bool *p_enter) override {
+			*p_enter = true; // 再帰処理する
 		}
-		virtual void onFile(const char *name_u8, const char *parent_u8) override {
+		virtual void onFile(const std::string &name_u8, const std::string &parent_u8) override {
 			mFiles.push_back(KPath(parent_u8).join(name_u8));
 		}
 	};
 	class ScanDir: public KDirectoryWalker::Callback {
 	public:
 		KPathList mDirs;
-		virtual void onDir(const char *name_u8, const char *parent_u8, bool *enter) override {
+		virtual void onDir(const std::string &name_u8, const std::string &parent_u8, bool *p_enter) override {
 			mDirs.push_back(KPath(parent_u8).join(name_u8));
-			*enter = true; // 再帰処理する
+			*p_enter = true; // 再帰処理する
 		}
 	};
 
@@ -4206,7 +4212,7 @@ private:
 	bool onUpdateFile(const std::string &name, const std::string &bankDir, const std::string &dataDir) {
 		if (K::pathHasExtension(name, ".edg")) {
 			CEdgeImporter imp;
-			if (imp.importFile(name, bankDir, dataDir, mFlags)) {
+			if (imp.importFile(name, bankDir, dataDir, m_Flags)) {
 #if 1
 				// .edg自体もコピーする
 				std::string nameInData = K::pathJoin(dataDir, name);
@@ -4240,8 +4246,8 @@ private:
 				if (EXPORT_CONTENTS_DEBUG_DATA) {
 					if (K::pathHasExtension(name, ".png")) {
 						std::string path = K::pathJoin(dataDir, name);
-						KInputStream r = KInputStream::fromFileName(path);
-						if (r.isOpen()) {
+						KInputStream r;
+						if (r.openFileName(path)) {
 							uint8_t buf[32];
 							r.read(buf, sizeof(buf));
 							int w = 0, h = 0;
@@ -4536,19 +4542,19 @@ private:
 
 				{
 					KSpriteRes *sp = new KSpriteRes();
-					sp->mTextureName = texture_name;
-					sp->mImageW = img_w;
-					sp->mImageH = img_h;
-					sp->mAtlasX = KNumval(x_str).valuei(img_w); // % 表記の場合は、画像全体に対する割合になる
-					sp->mAtlasY = KNumval(y_str).valuei(img_h);
-					sp->mAtlasW = KNumval(w_str).valuei(img_w);
-					sp->mAtlasH = KNumval(h_str).valuei(img_h);
-					sp->mPivot.x = KNumval(px_str).valuef((float)sp->mAtlasW); // % 表記の場合は、切り取り後の画像に対する割合になる
-					sp->mPivot.y = KNumval(py_str).valuef((float)sp->mAtlasH);
-					sp->mPivotInPixels = true;
-					sp->mUsingPackedTexture = false; // png から作っているので、パックはされていない
-					sp->mSubMeshIndex = -1; // <-- 何番目の画像を取り出すか？
-					sp->mDefaultBlend = KVideoUtils::strToBlend(blend_str, KBlend_INVALID);
+					sp->m_TextureName = texture_name;
+					sp->m_ImageW = img_w;
+					sp->m_ImageH = img_h;
+					sp->m_AtlasX = KNumval(x_str).valuei(img_w); // % 表記の場合は、画像全体に対する割合になる
+					sp->m_AtlasY = KNumval(y_str).valuei(img_h);
+					sp->m_AtlasW = KNumval(w_str).valuei(img_w);
+					sp->m_AtlasH = KNumval(h_str).valuei(img_h);
+					sp->m_Pivot.x = KNumval(px_str).valuef((float)sp->m_AtlasW); // % 表記の場合は、切り取り後の画像に対する割合になる
+					sp->m_Pivot.y = KNumval(py_str).valuef((float)sp->m_AtlasH);
+					sp->m_PivotInPixels = true;
+					sp->m_UsingPackedTexture = false; // png から作っているので、パックはされていない
+					sp->m_SubMeshIndex = -1; // <-- 何番目の画像を取り出すか？
+					sp->m_DefaultBlend = KVideoUtils::strToBlend(blend_str, KBlend_INVALID);
 					contents->sprites[sprite_name] = sp;
 					sp->drop();
 				}
@@ -4641,9 +4647,9 @@ public:
 				defaultUserParams.loadFromXml(xElm, true);
 			}
 			if (xElm->hasTag("EditInfo")) {
-				K_Drop(xEditInfo);
+				K__DROP(xEditInfo);
 				xEditInfo = xElm;
-				K_Grab(xEditInfo);
+				K__GRAB(xEditInfo);
 			}
 		}
 
@@ -4749,11 +4755,11 @@ public:
 		if (KBank::getAnimationBank()) {
 			KClipRes *new_clip = builder.createClip(clipName.u8());
 			new_clip->setTag(xml_name); // 作成元の .xres ファイル名タグを追加
-			new_clip->mEditInfoXml = xEditInfo;
-			K_Grab(new_clip->mEditInfoXml);
+			new_clip->m_EditInfoXml = xEditInfo;
+			K__GRAB(new_clip->m_EditInfoXml);
 			KBank::getAnimationBank()->addClipResource(clipName.u8(), new_clip);
-			K_Drop(new_clip);
-			K_Drop(xEditInfo);
+			K__DROP(new_clip);
+			K__DROP(xEditInfo);
 			if (out_clip) {
 				*out_clip = KBank::getAnimationBank()->find_clip(clipName.u8());
 			}
@@ -4825,13 +4831,13 @@ public:
 
 		// 得られたスプライトの Pivot や Blend はデフォルト値のままである。
 		// 最初に <EdgeSprites> の属性で指定された値を全ページ、レイヤーに設定する
-		for (auto it=sprites.m_items.begin(); it!=sprites.m_items.end(); ++it) {
+		for (auto it=sprites.m_Items.begin(); it!=sprites.m_Items.end(); ++it) {
 			if (default_params.has_blend) {
-				it->def->mDefaultBlend = default_params.blend;
+				it->def->m_DefaultBlend = default_params.blend;
 			}
-			it->def->mPivot.x = default_params.getPivotXInPixels(it->def->mAtlasW);
-			it->def->mPivot.y = default_params.getPivotYInPixels(it->def->mAtlasH);
-			it->def->mPivotInPixels = true;
+			it->def->m_Pivot.x = default_params.getPivotXInPixels(it->def->m_AtlasW);
+			it->def->m_Pivot.y = default_params.getPivotYInPixels(it->def->m_AtlasH);
+			it->def->m_PivotInPixels = true;
 		}
 
 		// <EdgeSprites> が子ノード <Page> を持っていれば、ページごとに指定された値を上書きする
@@ -4845,18 +4851,18 @@ public:
 					page_idx = page_params.page;
 				}
 				// 指定されたページに対応するスプライトの設定を書き換える
-				for (auto it=sprites.m_items.begin(); it!=sprites.m_items.end(); ++it) {
+				for (auto it=sprites.m_Items.begin(); it!=sprites.m_Items.end(); ++it) {
 					if (it->page == page_idx) {
 						if (page_params.has_blend) {
-							it->def->mDefaultBlend = page_params.blend;
+							it->def->m_DefaultBlend = page_params.blend;
 						}
 						if (page_params.has_pivot_x) {
-							it->def->mPivot.x = page_params.getPivotXInPixels(it->def->mAtlasW);
-							K__ASSERT(it->def->mPivotInPixels);
+							it->def->m_Pivot.x = page_params.getPivotXInPixels(it->def->m_AtlasW);
+							K__ASSERT(it->def->m_PivotInPixels);
 						}
 						if (page_params.has_pivot_y) {
-							it->def->mPivot.y = page_params.getPivotYInPixels(it->def->mAtlasH);
-							K__ASSERT(it->def->mPivotInPixels);
+							it->def->m_Pivot.y = page_params.getPivotYInPixels(it->def->m_AtlasH);
+							K__ASSERT(it->def->m_PivotInPixels);
 						}
 					}
 				}
@@ -4865,10 +4871,10 @@ public:
 		}
 
 		// テクスチャを登録
-		KBank::getTextureBank()->addTextureFromImage(sprites.m_tex_name, sprites.m_tex_image);
+		KBank::getTextureBank()->addTextureFromImage(sprites.m_TexName, sprites.m_TexImage);
 
 		// スプライトを登録
-		for (auto it=sprites.m_items.begin(); it!=sprites.m_items.end(); ++it) {
+		for (auto it=sprites.m_Items.begin(); it!=sprites.m_Items.end(); ++it) {
 			KPath sprite_name = KGamePath::getSpriteAssetPath(edge_name, it->page, it->layer);
 
 			// ここでスプライトを登録するが、第3引数 update_mesh は false にしておくこと。
@@ -4986,9 +4992,9 @@ public:
 			if (xElm->hasTag("EditInfo")) {
 				// <EdgeAnimation> 直下に <EditInfo> がある
 				// このクリップに対するエディタ用の情報
-				K_Drop(xEditInfo);
+				K__DROP(xEditInfo);
 				xEditInfo = xElm;
-				K_Grab(xEditInfo);
+				K__GRAB(xEditInfo);
 			}
 		}
 
@@ -5179,12 +5185,12 @@ public:
 			KClipRes *new_clip = builder.createClip(clipName.u8());
 			new_clip->setTag(xml_name); // 作成元の .xres ファイル名タグを追加
 			new_clip->setTag(edge_name.c_str()); // 作成元の .edg ファイル名タグを追加
-			new_clip->mEdgeFile = edge_name;
-			new_clip->mEditInfoXml = xEditInfo;
-			K_Grab(new_clip->mEditInfoXml);
+			new_clip->m_EdgeFile = edge_name;
+			new_clip->m_EditInfoXml = xEditInfo;
+			K__GRAB(new_clip->m_EditInfoXml);
 			KBank::getAnimationBank()->addClipResource(clipName.u8(), new_clip);
-			K_Drop(new_clip);
-			K_Drop(xEditInfo);
+			K__DROP(new_clip);
+			K__DROP(xEditInfo);
 			if (out_clip) {
 				*out_clip = KBank::getAnimationBank()->find_clip(clipName.u8());
 			}
@@ -5237,8 +5243,8 @@ bool K_makeClip(KClipRes **out_clip, KInputStream &edge_file, const KPath &edge_
 	KClipRes *new_clip = builder.createClip(clip_name.u8());
 	new_clip->setTag(""); // 作成元の .xres ファイル名タグを追加
 	new_clip->setTag(edge_name.u8()); // 作成元の .edg ファイル名タグを追加
-	new_clip->mEdgeFile = edge_name;
-	new_clip->mEditInfoXml = nullptr;
+	new_clip->m_EdgeFile = edge_name;
+	new_clip->m_EditInfoXml = nullptr;
 	if (out_clip) {
 		*out_clip = new_clip;
 	}

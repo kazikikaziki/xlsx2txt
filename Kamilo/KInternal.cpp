@@ -37,138 +37,6 @@ static void (*g_WarningHook)(const char *u8) = nullptr;
 static void (*g_ErrorHook)(const char *u8) = nullptr;
 
 
-#if TEST
-
-#else
-void K__SetDebugPrintHook(void (*hook)(const char *u8)) {
-	g_DebugPrintHook = hook;
-}
-void K__SetPrintHook(void (*hook)(const char *u8)) {
-	g_PrintHook = hook;
-}
-void K__SetWarningHook(void (*hook)(const char *u8)) {
-	g_WarningHook = hook;
-}
-void K__SetErrorHook(void (*hook)(const char *u8)) {
-	g_ErrorHook = hook;
-}
-void K__DebugPrint(const char *fmt_u8, ...) {
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_DebugPrintHook) {
-		g_DebugPrintHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		K::outputDebugStringW(ws);
-	}
-}
-void K__Print(const char *fmt_u8, ...) {
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_PrintHook) {
-		g_PrintHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		K::outputDebugStringW(ws);
-	}
-}
-void K__PrintW(const wchar_t *wfmt, ...) {
-	wchar_t ws[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, wfmt);
-	vswprintf(ws, sizeof(ws)/sizeof(wchar_t), wfmt, args);
-	va_end(args);
-	if (g_PrintHook) {
-		std::string u8 = K::strWideToUtf8(ws);
-		g_PrintHook(u8.c_str());
-	} else {
-		K::outputDebugStringW(ws);
-	}
-}
-void K__Warning(const char *fmt_u8, ...) {
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_WarningHook) {
-		g_WarningHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		K::outputDebugStringW(ws);
-	}
-}
-void K__WarningW(const wchar_t *wfmt, ...) {
-	wchar_t ws[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, wfmt);
-	vswprintf(ws, sizeof(ws)/sizeof(wchar_t), wfmt, args);
-	va_end(args);
-	if (g_WarningHook) {
-		std::string u8 = K::strWideToUtf8(ws);
-		g_WarningHook(u8.c_str());
-	} else {
-		K::outputDebugStringW(ws);
-	}
-}
-void K__Error(const char *fmt_u8, ...) {
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_ErrorHook) {
-		g_ErrorHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		K::outputDebugStringW(ws);
-	}
-}
-void K__ErrorW(const wchar_t *wfmt, ...) {
-	wchar_t ws[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, wfmt);
-	vswprintf(ws, sizeof(ws)/sizeof(wchar_t), wfmt, args);
-	va_end(args);
-	if (g_ErrorHook) {
-		std::string u8 = K::strWideToUtf8(ws);
-		g_ErrorHook(u8.c_str());
-	} else {
-		K::outputDebugStringW(ws);
-	}
-}
-
-void K__Verbose(const char *fmt_u8, ...) {
-#ifdef KAMILO_VERBOSE
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_WarningHook) {
-		g_WarningHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		K::outputDebugStringW(ws);
-	}
-#endif
-}
-#endif // TEST
-
-
-
-
-
-
-
-
-
 
 
 
@@ -396,6 +264,36 @@ void K::printW(const wchar_t *wfmt, ...) {
 		outputDebugStringW(ws);
 	}
 }
+void K::verbose(const char *fmt_u8, ...) {
+#ifndef KAMILO_NOVERBOSE
+	char u8[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u8, sizeof(u8), fmt_u8, args);
+	va_end(args);
+	if (g_DebugPrintHook) {
+		g_DebugPrintHook(u8);
+	} else {
+		std::wstring ws = K::strUtf8ToWide(u8);
+		outputDebugStringW(ws);
+	}
+#endif
+}
+void K::verboseW(const wchar_t *wfmt, ...) {
+#ifndef KAMILO_NOVERBOSE
+	wchar_t ws[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, wfmt);
+	vswprintf(ws, sizeof(ws)/sizeof(wchar_t), wfmt, args);
+	va_end(args);
+	if (g_DebugPrintHook) {
+		std::string u8 = K::strWideToUtf8(ws);
+		g_DebugPrintHook(u8.c_str());
+	} else {
+		outputDebugStringW(ws);
+	}
+#endif
+}
 void K::debug(const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
 	va_list args;
@@ -473,21 +371,6 @@ void K::errorW(const wchar_t *wfmt, ...) {
 	} else {
 		outputDebugStringW(ws);
 	}
-}
-void K::verbose(const char *fmt_u8, ...) {
-#ifdef KAMILO_VERBOSE
-	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
-	if (g_WarningHook) {
-		g_WarningHook(u8);
-	} else {
-		std::wstring ws = K::strUtf8ToWide(u8);
-		outputDebugStringW(ws);
-	}
-#endif
 }
 #pragma endregion // print
 
@@ -1690,34 +1573,94 @@ std::string K::strJoin(const std::vector<std::string> &strings, const std::strin
 }
 
 
-std::string K::strGetLeft(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator) {
+static const char  QUOTE_CHAR = '"';    // char 型の引用符
+static const char *QUOTE1_STR = "\"";   // １つの引用符（文字列型）
+static const char *QUOTE2_STR = "\"\""; // ２つの引用符（文字列型）
+
+std::string K::strQuoted(const std::string &s) {
+	// 既存の " を "" に変換する
+	std::string t = s;
+	K::strReplace(t, QUOTE1_STR, QUOTE2_STR);
+
+	// 前後に " を追加する
+	t.insert(t.begin(), QUOTE_CHAR);
+	t.push_back(QUOTE_CHAR);
+
+	return t;
+}
+
+std::string K::strUnquoted(const std::string &s) {
+	std::string t = s;
+	// 前後の " を削除する
+	if (t.size() >= 2 && t.front()==QUOTE_CHAR && t.back()==QUOTE_CHAR) {
+		t.erase(t.begin());
+		t.pop_back();
+	}
+	// 連続する "" を１つの " に変換する
+	K::strReplace(t, QUOTE2_STR, QUOTE1_STR);
+
+	return t;
+}
+
+std::string K::strGetLeft(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator, bool trim) {
 	// 文字列 s が区切り文字列 separator_substr を含んでいるなら、その左側の文字列を返す。
 	// 含んでいない場合は全文字列を返すが empty_if_no_separator が設定されて入れば空文字列を返す
 	size_t pos = s.find(separator_substr);
 	if (pos != std::string::npos) {
-		return s.substr(0, pos);
+		std::string val = s.substr(0, pos);
+		if (trim) K::strTrim(val);
+		return val;
 	}
 	if (empty_if_no_separator) {
 		return "";
 	} else {
-		return s;
+		std::string val = s;
+		if (trim) K::strTrim(val);
+		return val;
 	}
 }
 
-std::string K::strGetRight(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator) {
+std::string K::strGetRight(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator, bool trim) {
 	// 文字列 s が区切り文字列 separator_substr を含んでいるなら、その右側の文字列を返す。
 	// 含んでいない場合は全文字列を返すが empty_if_no_separator が設定されて入れば空文字列を返す
 	size_t pos = s.find(separator_substr);
 	if (pos != std::string::npos) {
-		return s.substr(pos + separator_substr.size());
+		std::string val = s.substr(pos + separator_substr.size());
+		if (trim) K::strTrim(val);
+		return val;
 	}
 	if (empty_if_no_separator) {
 		return "";
 	} else {
-		return s;
+		std::string val = s;
+		if (trim) K::strTrim(val);
+		return val;
 	}
 }
 
+// strSplit と似ているが、1バイトの区切り文字ではなく、複数バイトの区切り単語で分割する。
+std::vector<std::string> K::strSplitByWord(const std::string &str, const std::string &sep_word) {
+	std::vector<std::string> result;
+	int s = 0;
+	int p = strFind(str, sep_word, s);
+	while (s < p) {
+		std::string tok = str.substr(s, p-s);
+		strTrim(tok);
+		if (tok.size() > 0) {
+			result.push_back(tok);
+		}
+		s = p + sep_word.size();
+		p = strFind(str, sep_word, s);
+	}
+	if (s < str.size()) {
+		std::string tok = str.substr(s);
+		strTrim(tok);
+		if (tok.size() > 0) {
+			result.push_back(tok);
+		}
+	}
+	return result;
+}
 
 
 // delim 分割のために使う文字。複数指定できる。
@@ -1725,7 +1668,7 @@ std::string K::strGetRight(const std::string &s, const std::string &separator_su
 //		カンマと改行で区切る場合 ",\r\n"
 //		空白で区切る場合 " "
 //		空白とタブで区切る場合 " \t"
-// maxcount 分割後の最大要素数。0だと上限なし。1だと分割しない＝元の文字列そのまま。2以上を指定した場合は先頭から順番に分割しき、残った文字列は最後の要素に入る
+// maxcount 分割後の最大要素数。0だと上限なし。1だと分割しない＝元の文字列そのまま。2以上を指定した場合は先頭から順番に分割していき、残った文字列は最後の要素に入る
 //      "aaa=bbb=ccc" を '=' で分割すると以下のようになる
 //      maxcount=0 ==> returns: {"aaa", "bbb", "ccc"}
 //      maxcount=1 ==> returns: {"aaa=bbb=ccc"}
@@ -1829,8 +1772,21 @@ std::vector<std::string> K::strSplitLines(const std::string &str, bool skip_empt
 	return result;
 }
 
-bool K::strToFloat(const std::string &s, float *p_val) {
-	return strToFloat(s.c_str(), p_val);
+bool K::strToInt(const char *s, int *p_val) {
+	if (s == nullptr) return false;
+	char *err = 0;
+	int result = strtol(s, &err, 0);
+	if (err == s || *err) return false;
+	if (p_val) *p_val = result;
+	return true;
+}
+bool K::strToInt(const std::string &s, int *p_val) {
+	return strToInt(s.c_str(), p_val);
+}
+int K::strToInt(const std::string &s, int def) {
+	int val = def;
+	K::strToInt(s, &val);
+	return val;
 }
 bool K::strToFloat(const char *s, float *p_val) {
 	if (s == nullptr) return false;
@@ -1840,20 +1796,12 @@ bool K::strToFloat(const char *s, float *p_val) {
 	if (p_val) *p_val = result;
 	return true;
 }
-bool K::strToInt(const std::string &s, int *p_val) {
-	return strToInt(s.c_str(), p_val);
+bool K::strToFloat(const std::string &s, float *p_val) {
+	return strToFloat(s.c_str(), p_val);
 }
-bool K::strToInt(const char *s, int *p_val) {
-	if (s == nullptr) return false;
-	char *err = 0;
-	int result = strtol(s, &err, 0);
-	if (err == s || *err) return false;
-	if (p_val) *p_val = result;
-	return true;
-}
-int K::strToInt(const std::string &s) {
-	int val = 0;
-	K::strToInt(s, &val);
+float K::strToFloat(const std::string &s, float def) {
+	float val = def;
+	K::strToFloat(s, &val);
 	return val;
 }
 bool K::strToUInt32(const char *s, uint32_t *p_val) {
@@ -1867,6 +1815,11 @@ bool K::strToUInt32(const char *s, uint32_t *p_val) {
 bool K::strToUInt32(const std::string &s, uint32_t *p_val) {
 	return strToUInt32(s.c_str(), p_val);
 }
+uint32_t K::strToUInt32(const std::string &s, uint32_t def) {
+	uint32_t val = def;
+	strToUInt32(s.c_str(), &val);
+	return val;
+}
 bool K::strToUInt64(const char *s, uint64_t *p_val) {
 	if (s == nullptr) return false;
 	char *err = 0;
@@ -1877,6 +1830,11 @@ bool K::strToUInt64(const char *s, uint64_t *p_val) {
 }
 bool K::strToUInt64(const std::string &s, uint64_t *p_val) {
 	return strToUInt64(s.c_str(), p_val);
+}
+uint64_t K::strToUInt64(const std::string &s, uint64_t def) {
+	uint64_t val = def;
+	strToUInt64(s.c_str(), &val);
+	return val;
 }
 
 /// strptime の代替関数

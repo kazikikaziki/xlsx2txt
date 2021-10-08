@@ -22,26 +22,26 @@ class KNode;
 
 class KResource: public virtual KRef {
 public:
-	KPath mName;
-	KNameList mTags;
+	KPath m_Name;
+	KNameList m_Tags;
 
 	KResource() {}
 	virtual void release() {}
 
 	void addTag(const KName &tag) {
-		KNameList_pushback_unique(mTags, tag);
+		KNameList_pushback_unique(m_Tags, tag);
 	}
 	bool hasTag(const KName &tag) const {
-		return KNameList_contains(mTags, tag);
+		return KNameList_contains(m_Tags, tag);
 	}
 	const KNameList & getTags() const {
-		return mTags;
+		return m_Tags;
 	}
 	void setName(const KPath &name) {
-		mName = name;
+		m_Name = name;
 	}
 	KPath getName() const {
-		return mName;
+		return m_Name;
 	}
 };
 typedef KAutoRef<KResource> KResourceAuto;
@@ -49,11 +49,11 @@ typedef KAutoRef<KResource> KResourceAuto;
 
 class KTextureRes: public KResource {
 public:
-	KTEXID mTexId;
-	int mWidth;
-	int mHeight;
-	bool mIsRenderTex;
-	bool mProtected;
+	KTEXID m_TexId;
+	int m_Width;
+	int m_Height;
+	bool m_IsRenderTex;
+	bool m_Protected;
 
 	KTextureRes();
 	virtual void release() override;
@@ -72,41 +72,41 @@ public:
 	bool buildFromImageEx(int img_w, int img_h, const KPath &texture_name, int image_index, KBlend blend, bool packed);
 	bool buildFromPng(const void *png_data, int png_size, const KPath &texname);
 
-	KPath mTextureName;
-	KMesh mMesh;
-	int mSubMeshIndex;
-	int mPaletteCount;
-	int mImageW; ///< 作成元画像の横幅。テクスチャの幅ではなく、元画像のサイズであることに注意。サイズが 2^n とは限らない
-	int mImageH;
+	KPath m_TextureName;
+	KMesh m_Mesh;
+	int m_SubMeshIndex;
+	int m_PaletteCount;
+	int m_ImageW; ///< 作成元画像の横幅。テクスチャの幅ではなく、元画像のサイズであることに注意。サイズが 2^n とは限らない
+	int m_ImageH;
 
 	/// 元画像からの切り取り範囲
 	/// ※テクスチャからの切り取り範囲ではない！
 	/// あくまでも、元のBITMAP画像内での切り取り範囲であることに注意。
 	/// テクスチャ化するときに再配置したり余白の切り落としなどがあったとしても atlas 範囲は変化しない
-	int mAtlasX;
-	int mAtlasY;
-	int mAtlasW;
-	int mAtlasH;
+	int m_AtlasX;
+	int m_AtlasY;
+	int m_AtlasW;
+	int m_AtlasH;
 
 	/// ピボット座標。
 	/// アトラス範囲の左上を原点としたときのピボット座標を指定する。
 	/// 座標単位は mPivotInPixels によって決まる
-	/// mPivotInPixels が true ならばピクセル単位で指定する。
-	/// mPivotInPixels が false なら左上を(0, 0)右下を(1, 1)とする正規化ビットマップ座標で指定する。
+	/// m_PivotInPixels が true ならばピクセル単位で指定する。
+	/// m_PivotInPixels が false なら左上を(0, 0)右下を(1, 1)とする正規化ビットマップ座標で指定する。
 	/// @note 「正規化ビットマップ座標」における右下座標(1, 1)は、テクスチャや元画像の右下ではなく、アトラス範囲での右下になることに注意。
 	/// 元画像が 2^n サイズでない場合、自動的に余白が追加されたテクスチャになるため、元画像の右下とテクスチャの右下は一致しなくなる。
 
 	/// 元画像内での mPivot 座標は次のようにして計算する
-	/// if (mPivotInPixels) {
-	///   point = KVec2(atlas_x_, atlas_y_) + spritepivot_;
+	/// if (m_PivotInPixels) {
+	///   point = KVec2(m_AtlasX, m_AtlasY) + m_Pivot;
 	/// } else {
-	///   point = KVec2(atlas_x_, atlas_y_) + KVec2(atlas_w_ * pivot_.x, atlas_h_ * pivot_.y);
+	///   point = KVec2(m_AtlasX, m_AtlasY) + KVec2(m_AtlasW * m_Pivot.x, m_AtlasH * m_Pivot.y);
 	/// }
-	KVec2 mPivot;
+	KVec2 m_Pivot;
 
-	KBlend mDefaultBlend;
-	bool mPivotInPixels;
-	bool mUsingPackedTexture;
+	KBlend m_DefaultBlend;
+	bool m_PivotInPixels;
+	bool m_UsingPackedTexture;
 };
 typedef KAutoRef<KSpriteRes> KSpriteAuto;
 
@@ -176,7 +176,7 @@ public:
 			xml_data = NULL;
 		}
 		~SPRITE_KEY() {
-		//	K_Drop(xml_data);
+		//	K__DROP(xml_data);
 		}
 
 		int time; // キー時刻（トラック先頭からの経過時間）
@@ -242,16 +242,16 @@ public:
 	bool getNextPage(int page, int mark, std::string *p_new_clip, int *p_new_page) const;
 	void recalculateKeyTimes();
 
-	KPath mEdgeFile;
-	KXmlElement *mEditInfoXml;
+	KPath m_EdgeFile;
+	KXmlElement *m_EditInfoXml;
 
 private:
 	void gui_key(const SPRITE_KEY &seg, int framenumber) const;
-	std::vector<SPRITE_KEY> mKeys;
-	KPath mName;
-	Flags mFlags;
-	int mLength;
-	KNameList mTags;
+	std::vector<SPRITE_KEY> m_Keys;
+	KPath m_Name;
+	Flags m_Flags;
+	int m_Length;
+	KNameList m_Tags;
 };
 typedef KAutoRef<KClipRes> KClipAuto;
 
@@ -267,7 +267,7 @@ public:
 	virtual void release() override;
 
 private:
-	KSHADERID mShaderId;
+	KSHADERID m_ShaderId;
 };
 typedef KAutoRef<KShaderRes> KShaderAuto;
 
@@ -283,7 +283,7 @@ public:
 	bool loadFromStream(KInputStream &input, int ttc_index=0);
 	bool loadFromSystemFontDirectory(const char *filename, int ttc_index=0);
 private:
-	KFont mFont;
+	KFont m_Font;
 };
 
 
@@ -567,10 +567,10 @@ public:
 	bool addScript(const std::string &name, const std::string &code);
 
 private:
-	std::unordered_map<std::string, lua_State *> m_items;
-	mutable std::recursive_mutex m_mutex;
-	KLuaBankCallback *m_cb;
-	KStorage m_storage;
+	std::unordered_map<std::string, lua_State *> m_Items;
+	mutable std::recursive_mutex m_Mutex;
+	KLuaBankCallback *m_Cb;
+	KStorage m_Storage;
 };
 
 
@@ -609,9 +609,9 @@ public:
 	};
 	KSpriteList() {
 	}
-	KPath m_tex_name;
-	KImage m_tex_image;
-	std::vector<ITEM> m_items;
+	KPath m_TexName;
+	KImage m_TexImage;
+	std::vector<ITEM> m_Items;
 };
 
 enum KPaletteImportFlag {

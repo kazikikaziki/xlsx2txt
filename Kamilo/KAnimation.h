@@ -21,11 +21,13 @@ struct KPlaybackSignalArgs {
 	KNode *node;
 	const KClipRes *clip;
 	int page;
+	uintptr_t userdata;
 
 	KPlaybackSignalArgs() {
 		node = nullptr;
 		clip = nullptr;
 		page = -1;
+		userdata = 0;
 	}
 };
 
@@ -64,16 +66,16 @@ public:
 	bool isMainClipSleep() const; ///< 一時停止中かどうか
 	void seekMainClipBegin(); ///< 先頭に移動
 	void seekMainClipEnd(); ///< 終端に移動
-	bool seekMainClipFrame(int frame); /// <フレーム番号を指定して移動
+	bool seekMainClipFrame(int frame); ///< フレーム番号を指定して移動
 	bool seekMainClipKey(int key); ///< キー番号を指定して移動
 	bool seekMainClipToMark(int mark); ///< マーカーを指定して移動
 	int findPageByMark(int mark) const; ///< 指定したマーカーがついているページを返す
 	int getMainClipPage(int *out_pageframe=nullptr) const; ///< アニメクリップを再生中の場合、そのページ番号を返す
-	bool isMainClipPlaying(const std::string &name_or_alias, std::string *p_post_next_clip=nullptr, int *p_post_next_page=nullptr) const; ///< アニメクリップを再生中かどうか
+	bool isMainClipPlaying(const std::string &name_or_alias="", std::string *p_post_next_clip=nullptr, int *p_post_next_page=nullptr) const; ///< アニメクリップを再生中かどうか
 	bool setMainClipName(const std::string &name, bool keep=false); ///< クリップ名を指定してアニメをセットする
 	bool setMainClipAlias(const std::string &alias, bool keep=false); ///< クリップのエイリアスを指定してアニメをセットする
 	bool setMainClip(KClipRes *clip, bool keep=false); ///< クリップオブジェクトを指定してアニメをセットする
-	void setMainClipCallback(KPlaybackCallback *cb); ///< アニメの再生状態に応じてコールバックが呼ばれるようにする
+	void setMainClipCallback(KPlaybackCallback *cb, uintptr_t userdata); ///< アニメの再生状態に応じてコールバックが呼ばれるようにする userdata は KPlaybackSignalArgs::userdata で参照できる
 	void tickTracks();
 	void setAlias(const std::string &alias, const std::string &name);
 	std::string getClipNameByAlias(const std::string &alias) const;

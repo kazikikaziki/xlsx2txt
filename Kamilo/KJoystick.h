@@ -8,8 +8,8 @@ public:
 
 	enum Axis {
 		AXIS_NONE = -1,
-		AXIS_X, ///< X軸
-		AXIS_Y, ///< Y軸
+		AXIS_X, ///< X軸（負=左 正=右）
+		AXIS_Y, ///< Y軸（負=上 正=下）
 		AXIS_Z, ///< Z軸
 		AXIS_R, ///< X回転
 		AXIS_U, ///< Y回転
@@ -52,11 +52,9 @@ public:
 	/// 接続中のジョイスティックについているボタンの数
 	static int getButtonCount(int index);
 
-	/// 軸入力の閾値。この値未満の入力量は無視する
-	static void setThreshold(float value);
-
 	/// 軸の入力値を -1.0 以上 1.0 以下の値で返す
-	static float getAxis(int index, int axis);
+	/// threshold には入力感度を指定する
+	static float getAxis(int index, int axis, float threshold=0.2f);
 
 	/// ボタンが押されているかどうか
 	static bool getButton(int index, int btn);
@@ -68,6 +66,10 @@ public:
 	/// x ハットスイッチの入力向きを XY 成分で表したときの X 値。-1, 0, 1 のどれかになる
 	/// y ハットスイッチの入力向きを XY 成分で表したときの Y 値。-1, 0, 1 のどれかになる
 	/// ハットスイッチの入力向き。上方向を 0 度として時計回りに360未満の値を取る
+	/// X負 = 左
+	/// X正 = 右
+	/// Y負 = 上
+	/// Y正 = 下
 	static bool getPov(int index, int *x, int *y, int *deg);
 
 	/// ジョイスティックの入力状態を更新する

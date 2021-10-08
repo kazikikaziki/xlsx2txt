@@ -43,6 +43,9 @@ public:
 
 	static void setPerPassRenderTargetSize(int pass, int w, int h);
 
+	/// パスの描画が終わった後、アルファチャンネルを 1.0 で塗りつぶすか？
+	static void setPerPassAlphaFillingEnable(int pass, bool value);
+
 	/// 単位座標系（画面中央原点、-1.0～1.0、Y軸上向き）の座標を、
 	/// ウィンドウクライアント座標系（左上原点、y軸下向き）で表す。
 	/// ただし z 座標は加工しない

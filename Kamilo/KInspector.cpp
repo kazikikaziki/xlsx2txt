@@ -266,8 +266,9 @@ public:
 	#ifdef _DEBUG
 		if (0) {
 			std::string png = img.saveToMemory();
-			KOutputStream output = KOutputStream::fromFileName("~gui_icons.png");
-			output.write(png.data(), png.size());
+			KOutputStream file;
+			file.openFileName("~gui_icons.png");
+			file.write(png.data(), png.size());
 		}
 	#endif
 		KTEXID texid = KVideo::createTexture(ICON_TEX_W, ICON_TEX_H);
@@ -350,9 +351,9 @@ public:
 		KDebugGui::K_DebugGui_NodeAtomic(node);
 		KDebugGui::K_DebugGui_NodeRenderAfterChildren(node);
 		{
-			bool b = node->m_LocalRenderOrder == KNode::LRO_TREE;
+			bool b = node->getLocalRenderOrder() == KLocalRenderOrder_TREE;
 			if (ImGui::Checkbox("Use Local Render Order", &b)) {
-				node->m_LocalRenderOrder = b ? KNode::LRO_TREE : KNode::LRO_DEFAULT;
+				node->setLocalRenderOrder(b ? KLocalRenderOrder_TREE : KLocalRenderOrder_DEFAULT);
 			}
 			if (ImGui::IsItemHovered()) {
 				ImGui::SetTooltip(
@@ -948,7 +949,7 @@ public:
 		m_font_index = 0;
 	}
 	~CInspectorImpl() {
-		K_Drop(m_tree_inspector);
+		K__DROP(m_tree_inspector);
 	}
 	void onGameStart() {
 		m_tree_inspector->start();
@@ -1704,22 +1705,41 @@ void KDebugGui::K_DebugGui_NodeNameId(KNode *node) {
 }
 void KDebugGui::K_DebugGui_NodeTag(KNode *node) {
 	if (node == nullptr) return;
-	const KNameList &tags = node->getTagList();
-	if (tags.size() > 0) {
-		ImGui::Text("Tags: "); ImGui::SameLine();
-		for (size_t i=0; i<tags.size(); i++) {
-			const char *name = tags[i].c_str();
-			ImGui::Text("[%s]", name);
-			ImGui::SameLine();
+
+	{
+		const KNameList &tags = node->getTagList();
+		if (tags.size() > 0) {
+			ImGui::Text("Tags: "); ImGui::SameLine();
+			for (size_t i=0; i<tags.size(); i++) {
+				const char *name = tags[i].c_str();
+				ImGui::Text("[%s]", name);
+				ImGui::SameLine();
+			}
+			ImGui::NewLine();
+		} else {
+			ImGui::Text("Tags: (NO TAGS)");
 		}
-		ImGui::NewLine();
-	} else {
-		ImGui::Text("Tag: (NO TAGS)");
 	}
+
+	{
+		const KNameList &tags = node->getTagListInherited();
+		if (tags.size() > 0) {
+			ImGui::Text("Tags Inherited: "); ImGui::SameLine();
+			for (size_t i=0; i<tags.size(); i++) {
+				const char *name = tags[i].c_str();
+				ImGui::Text("[%s]", name);
+				ImGui::SameLine();
+			}
+			ImGui::NewLine();
+		} else {
+			ImGui::Text("Tags Inherited: (NO TAGS)");
+		}
+	}
+
+
 	if (ImGui::IsItemHovered()) {
 		ImGui::SetTooltip(
-			u8"このエンティティにつけられたタグ番号と、その名前。\n"
-			u8"[in tree] と表示されている場合は、親のタグを表示していることを示す。\n"
+			u8"このエンティティにつけられたタグ番号と、その名前\n"
 		);
 	}
 }

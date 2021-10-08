@@ -116,8 +116,9 @@ void KImGui::ImageExportButton(const char *label, KTEXID texid, const std::strin
 		if (!img.empty()) {
 			std::string png = img.saveToMemory();
 			
-			KOutputStream output = KOutputStream::fromFileName(filename);
-			output.write(png.data(), png.size());
+			KOutputStream file;
+			file.openFileName(filename);
+			file.write(png.data(), png.size());
 
 			K::print("Export texture image %s", filename.c_str());
 		}

@@ -21,7 +21,6 @@ class CWin32Joy {
 		return 0 <= (n) && (n) < KJoystick::MAX_CONNECT;
 	}
 public:
-	float m_Threshold;
 	bool m_IsInit;
 
 	CWin32Joy() {
@@ -36,7 +35,6 @@ public:
 		for (int i=0; i<MAX_JOYS; i++) {
 			init_stick(i);
 		}
-		m_Threshold = 0.05f;//0.20f;
 		m_IsInit = true;
 		return true;
 	}
@@ -76,7 +74,7 @@ public:
 		const _JOY &joy = m_Joy[index];
 		return joy.caps.wNumButtons;
 	}
-	virtual float getAxis(int index, int axis) {
+	virtual float getAxis(int index, int axis, float threshold) {
 		if (!ID_CHECK(index)) return 0;
 		const _JOY &joy = m_Joy[index];
 	
@@ -95,7 +93,7 @@ public:
 		// dwXpos なら 0 が一番左に倒したとき、0xFFFF が一番右に倒したときに該当する
 		// ニュートラル状態はその中間だが、きっちり真ん中の値 0x7FFF になっている保証はない。
 		float value = ((float)dwAxis / 0xFFFF - 0.5f) * 2.0f;
-		if (fabsf(value) < m_Threshold) return 0.0f; // 絶対値が一定未満であればニュートラル状態であるとみなす
+		if (fabsf(value) < threshold) return 0.0f; // 絶対値が一定未満であればニュートラル状態であるとみなす
 		return value;
 	}
 	virtual bool getButton(int index, int btn) {
@@ -201,17 +199,14 @@ bool KJoystick::isConnected(int index) {
 bool KJoystick::hasPov(int index) {
 	return g_Joy.hasPov(index);
 }
-void KJoystick::setThreshold(float value) {
-	g_Joy.m_Threshold = value;
-}
 int KJoystick::getAxisCount(int index) {
 	return g_Joy.getAxisCount(index);
 }
 int KJoystick::getButtonCount(int index) {
 	return g_Joy.getButtonCount(index);
 }
-float KJoystick::getAxis(int index, int axis) {
-	return g_Joy.getAxis(index, axis);
+float KJoystick::getAxis(int index, int axis, float threshold) {
+	return g_Joy.getAxis(index, axis, threshold);
 }
 bool KJoystick::getButton(int index, int btn) {
 	return g_Joy.getButton(index, btn);

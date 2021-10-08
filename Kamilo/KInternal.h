@@ -11,9 +11,6 @@
 #include <vector>
 
 
-#define TEST 1
-
-
 // ファイル名と行番号付きでエラーメッセージを出力する
 // ※fmt はリテラルでないといけない。
 // マクロ内の "TEXT" fmt のようなリテラル文字列結合で fmt が変数だとコンパイルエラーが発生する
@@ -64,7 +61,6 @@ typedef int K_LCID;
 
 
 
-#if TEST
 #define K__Break()                 Kamilo::K::_break()
 #define K__Exit()                  Kamilo::K::_exit()
 #define K__IsDebuggerPresent()     Kamilo::K::_IsDebuggerPresent()
@@ -82,28 +78,6 @@ typedef int K_LCID;
 #define K__SetPrintHook(hook)      Kamilo::K::setPrintHook(hook)
 #define K__SetWarningHook(hook)    Kamilo::K::setWarningHook(hook)
 #define K__SetErrorHook(hook)      Kamilo::K::setErrorHook(hook)
-#else
-void K__Break();
-void K__Exit();
-bool K__IsDebuggerPresent();
-void K__Dialog(const char *u8);
-void K__Notify(const char *u8);
-void K__DebugPrint(const char *fmt_u8, ...);
-void K__Print(const char *fmt_u8, ...);
-void K__PrintW(const wchar_t *wfmt, ...);
-void K__Error(const char *fmt_u8, ...);
-void K__ErrorW(const wchar_t *wfmt, ...);
-void K__Warning(const char *fmt_u8, ...);
-void K__WarningW(const wchar_t *wfmt, ...);
-void K__Verbose(const char *fmt_u8, ...); // KAMILO_VERBOSE が定義されているときのみ動作する
-void K__SetDebugPrintHook(void (*hook)(const char *u8));
-void K__SetPrintHook(void (*hook)(const char *u8));
-void K__SetWarningHook(void (*hook)(const char *u8));
-void K__SetErrorHook(void (*hook)(const char *u8));
-#endif
-
-
-
 
 
 struct _StrW {
@@ -167,13 +141,14 @@ public:
 	#pragma region print
 	static void print(const char *fmt_u8, ...);
 	static void printW(const wchar_t *wfmt, ...);
+	static void verbose(const char *fmt_u8, ...);
+	static void verboseW(const wchar_t *wfmt, ...);
 	static void debug(const char *fmt_u8, ...);
 	static void debugW(const wchar_t *wfmt, ...);
 	static void warning(const char *fmt_u8, ...);
 	static void warningW(const wchar_t *wfmt, ...);
 	static void error(const char *fmt_u8, ...);
 	static void errorW(const wchar_t *wfmt, ...);
-	static void verbose(const char *fmt_u8, ...); // KAMILO_VERBOSE が定義されているときのみ動作する
 	static void setDebugPrintHook(void (*hook)(const char *u8));
 	static void setPrintHook(void (*hook)(const char *u8));
 	static void setWarningHook(void (*hook)(const char *u8));
@@ -275,19 +250,25 @@ public:
 	static void strTrim(std::string &s);
 	static void strJoin(std::string &s, const std::string &more, const std::string &sep="");
 	static std::string strJoin(const std::vector<std::string> &strings, const std::string &sep="", bool skip_empty=true);
-	static std::string strGetLeft(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator);
-	static std::string strGetRight(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator);
+	static std::string strGetLeft(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator=true, bool trim=true);
+	static std::string strGetRight(const std::string &s, const std::string &separator_substr, bool empty_if_no_separatorr=true, bool trim=true);
+	static std::string strQuoted(const std::string &s);
+	static std::string strUnquoted(const std::string &s);
 	static std::vector<std::string> strSplit(const std::string &s, const std::string &delims, int maxcount=0, bool condense_delims=true, bool _trim=true);
+	static std::vector<std::string> strSplitByWord(const std::string &str, const std::string &sep_word);
 	static std::vector<std::string> strSplitLines(const std::string &s, bool skip_empty_lines=true, bool _trim=true);
-	static bool strToFloat(const std::string &s, float *p_val);
 	static bool strToFloat(const char *s, float *p_val);
-	static bool strToInt(const std::string &s, int *p_val);
+	static bool strToFloat(const std::string &s, float *p_val);
+	static float strToFloat(const std::string &s, float def=0.0f);
 	static bool strToInt(const char *s, int *p_val);
-	static int strToInt(const std::string &s);
-	static bool strToUInt32(const std::string &s, uint32_t *p_val);
+	static bool strToInt(const std::string &s, int *p_val);
+	static int strToInt(const std::string &s, int def=0);
 	static bool strToUInt32(const char *s, uint32_t *p_val);
-	static bool strToUInt64(const std::string &s, uint64_t *p_val);
+	static bool strToUInt32(const std::string &s, uint32_t *p_val);
+	static uint32_t strToUInt32(const std::string &s, uint32_t def=0);
 	static bool strToUInt64(const char *s, uint64_t *p_val);
+	static bool strToUInt64(const std::string &s, uint64_t *p_val);
+	static uint64_t strToUInt64(const std::string &s, uint64_t def=0);
 	static int str_stricmp(const char *s, const char *t); ///< _stricmp, strcasecmp
 	static int str_stricmp(const std::string &s, const std::string &t);
 	static char * str_strptime(const char *str, const char *fmt, struct tm *out_tm, const char *_locale); ///< strptime の代替関数

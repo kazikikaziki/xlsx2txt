@@ -4,7 +4,6 @@
 #include "KStream.h"
 #include "KXml.h"
 #include "KMath.h"
-#include "keng_ext.h"
 
 namespace Kamilo {
 

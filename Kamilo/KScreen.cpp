@@ -142,6 +142,7 @@ template <class T> void _EraseT(std::vector<T> &list, T value) {
 class CScreenImpl: public KInspectorCallback {
 	static const int MAX_PASS = 4;
 	KTEXID m_pass_tex[MAX_PASS]; // パスごとの描画結果
+	float m_pass_alpha_filling[MAX_PASS]; // パスごとの描画結果に対してアルファを均一にする
 	KGizmo *m_gizmo;
 	OUTLINE m_debug_outline;
 	OUTLINE m_user_outline;
@@ -188,7 +189,6 @@ public:
 		m_show_debug2 = false;
 		m_keep_aspect = false;
 		m_trace = false;
-		memset(m_pass_tex, 0, sizeof(m_pass_tex));
 		m_tmp_target = nullptr;
 		m_gizmo = nullptr;
 		m_game_w = 0;
@@ -199,6 +199,10 @@ public:
 		m_texbank = nullptr;
 		m_alpha_filling = true;
 		m_use_filter = false;
+		for (int i=0; i<MAX_PASS; i++) {
+			m_pass_tex[i] = nullptr;
+			m_pass_alpha_filling[i] = false;
+		}
 	}
 	void init(int game_w, int game_h, int gui_w, int gui_h) {
 		K__ASSERT(game_w > 0);
@@ -211,12 +215,15 @@ public:
 		m_gui_w = gui_w;
 		m_gui_h = gui_h;
 		m_keep_aspect = true;
-		memset(m_pass_tex, 0, sizeof(m_pass_tex));
 		m_gizmo = new KGizmo();
 		m_tmp_target = nullptr;
 		m_bgcolor = KColor::ZERO;
 		m_margin_color = KColor::BLACK;
 		m_alpha_filling = true;
+		for (int i=0; i<MAX_PASS; i++) {
+			m_pass_tex[i] = nullptr;
+			m_pass_alpha_filling[i] = false;
+		}
 	}
 
 	// KInspectorCallback
@@ -335,6 +342,11 @@ public:
 		if (0 <= pass && pass < MAX_PASS) {
 			KPath name = KEngine::passImageName(pass);
 			m_pass_tex[pass] = m_texbank->addRenderTexture(name, w, h, KTextureBank::F_OVERWRITE_SIZE_NOT_MATCHED); // name を変えずに中身だけ作り直す。KTEXID は変わるので注意
+		}
+	}
+	void setPerPassAlphaFillingEnable(int pass, bool value) {
+		if (0 <= pass && pass < MAX_PASS) {
+			m_pass_alpha_filling[pass] = value;
 		}
 	}
 	void startVideo(KTextureBank *texbank) {
@@ -562,6 +574,9 @@ private:
 				const KNodeArray &list = m_tmp_pass_cameras[i];
 				if (list.size() > 0) {
 					render_world(list, start, &filter, m_pass_tex[i], false);
+				}
+				if (m_pass_alpha_filling[i]) { // ダメ。塗りつぶしたいパスと層でないパスがあるので、パスごとに塗りつぶすかどうかを設定できないといけない
+					KVideo::fill(m_pass_tex[i], KColor::WHITE, KColorChannel_A); // アルファを 1.0 で塗りつぶす
 				}
 			}
 		}
@@ -917,6 +932,11 @@ void KScreen::setPerPassRenderTargetSize(int pass, int w, int h) {
 	K__ASSERT(g_Screen);
 	g_Screen->setPerPassRenderTargetSize(pass, w, h);
 }
+void KScreen::setPerPassAlphaFillingEnable(int pass, bool value) {
+	K__ASSERT(g_Screen);
+	g_Screen->setPerPassAlphaFillingEnable(pass, value);
+}
+
 /// 単位座標系（画面中央原点、-1.0～1.0、Y軸上向き）の座標を、
 /// ウィンドウクライアント座標系（左上原点、y軸下向き）で表す。
 /// ただし z 座標は加工しない

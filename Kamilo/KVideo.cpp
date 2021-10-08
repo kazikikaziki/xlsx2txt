@@ -1690,7 +1690,7 @@ public:
 		m_diffuse = K__DX9_COLOR_WHITE;
 		m_specular = K__DX9_COLOR_ZERO;
 		m_texture = nullptr;
-		K_Drop(m_curr_shader);
+		K__DROP(m_curr_shader);
 		K__DX9_LOCK_GUARD(m_mutex);
 		for (auto it=m_texlist.begin(); it!=m_texlist.end(); ++it) {
 			CD3DTex *tex = it->second;
@@ -2109,11 +2109,11 @@ public:
 		}
 	}
 	void setShader(KSHADERID sid) {
-		K_Drop(m_curr_shader);
+		K__DROP(m_curr_shader);
 		CD3DShader *sh = findShader(sid);
 		if (sh) {
 			m_curr_shader = sh;
-			K_Grab(m_curr_shader);
+			K__GRAB(m_curr_shader);
 		} else {
 			m_curr_shader = nullptr;
 		}

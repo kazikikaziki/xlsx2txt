@@ -1,6 +1,5 @@
 ﻿#include "KNode.h"
 #include "KInternal.h"
-#include "keng_ext.h" // KImGui_XXX
 #include "KCamera.h"
 #include "KDrawable.h"
 #include "KAction.h"
@@ -10,9 +9,720 @@
 
 
 #define IGNORE_REMOVING_NODES 1
-#define TEST_MATRIX 1
+#define TEST_WORLDMATRIX 1
 
 namespace Kamilo {
+
+#define PATH_DELIM "/"
+
+static void KNodeTree_on_node_enter(CNodeTreeImpl *tree, KNode *node);
+static void KNodeTree_on_node_exit(CNodeTreeImpl *tree, KNode *node);
+static void KNodeTree_on_node_removing(CNodeTreeImpl *tree, KNode *node);
+static void KNodeTree_add_tag(CNodeTreeImpl *tree, KNode *node, const KName &tag);
+static void KNodeTree_del_tag(CNodeTreeImpl *tree, KNode *node, const KName &tag);
+static void KNodeTree_on_node_marked_as_remove(CNodeTreeImpl *tree, KNode *node);
+
+
+// スケーリング * 並行移動
+static KMatrix4 _MakeMatrix_Sc_Tr(const KVec3 &sc, const KVec3 &tr) {
+//	KMatrix4 T = KMatrix4::fromTranslation(tr);
+//	KMatrix4 S = KMatrix4::fromScale(sc);
+//	KMatrix4 ST = S * T; で得られる行列 ST と同じ
+	float tmp[] = {
+		sc.x, 0.0f, 0.0f, 0.0f,
+		0.0f, sc.y, 0.0f, 0.0f,
+		0.0f, 0.0f, sc.z, 0.0f,
+		tr.x, tr.y, tr.z, 1.0f,
+	};
+	return KMatrix4(tmp);
+}
+
+// 並行移動 * スケーリング の逆行列。
+// 逆平行移動 * 逆スケーリングで求める
+static KMatrix4 _MakeMatrix_Inv_Tr_Sc(const KVec3 &tr, const KVec3 &sc) {
+	// KMatrix4 inv_T = KMatrix4::fromTranslation(-tr);
+	// KMatrix4 inv_S = KMatrix4::fromScale(sc);
+	// KMatrix4 inv_TS = inv_T * inv_S; で得られる行列 inv_TS と同じ
+	float tmp[] = {
+		 1.0f/sc.x,        0.0f,        0.0f, 0.0f,
+		      0.0f,   1.0f/sc.y,        0.0f, 0.0f,
+		      0.0f,        0.0f,   1.0f/sc.z, 0.0f,
+		-tr.x/sc.x,  -tr.y/sc.y,  -tr.z/sc.z, 1.0f,
+	};
+	return KMatrix4(tmp);
+}
+
+
+
+
+
+
+
+#pragma region STransformData
+STransformData::STransformData() {
+	m_Scale = KVec3(1.0f, 1.0f, 1.0f);
+	m_DirtyLocalMatrix = true;
+	m_DirtyWorldMatrix = true;
+	m_UsingEuler = true;
+	m_UsingCustom = false;
+	m_InheritTransform = true;
+	m_Node = nullptr;
+}
+const KVec3 & STransformData::getPosition() const {
+	return m_Position;
+}
+const KVec3 & STransformData::getScale() const {
+	return m_Scale;
+}
+const KQuat & STransformData::getRotation() const {
+	return m_Rotation;
+}
+void STransformData::setRotationDelta(const KQuat &delta) {
+	KQuat rot = getRotation();
+	rot *= delta;
+	setRotation(rot);
+}
+bool STransformData::getRotationEuler(KVec3 *out_euler) const {
+	if (m_UsingEuler) {
+		if (out_euler) *out_euler = m_RotationEuler;
+		return true;
+	}
+	return false;
+}
+/// 座標を設定する。
+/// デフォルトの設定では、これは親ノードからの相対的な位置を表す。
+/// @note 座標、スケール、回転を親から継承したくない場合は setTransformInherit を使って継承フラグを外す
+void STransformData::setPosition(const KVec3 &value) {
+	m_Position = value;
+	_updateTree();
+}
+void STransformData::setPositionDelta(const KVec3 &delta) {
+	KVec3 pos = getPosition();
+	pos += delta;
+	setPosition(pos);
+}
+/// スケールを設定する。
+/// デフォルトの設定では、これは親ノードからの相対的なスケールを表す。
+/// @note 座標、スケール、回転を親から継承したくない場合は setTransformInherit を使って継承フラグを外す
+void STransformData::setScale(const KVec3 &value) {
+	m_Scale = value;
+	_updateTree();
+}
+/// 回転をクォータニオンで設定する。
+/// クォータニオンからオイラー角への変換は一意に定まらないため、
+/// クォータニオンを設定すると getRotationEuler によるオイラー角取得ができなくなる
+void STransformData::setRotation(const KQuat &value) {
+	m_Rotation = value;
+	m_RotationEuler = KVec3();
+	m_UsingEuler = false;
+	_updateTree();
+}
+/// 回転をオイラー角で設定する。
+/// 角度の適用順序は X --> Y --> Z である。
+/// オイラー角を適用するとクォータニオンも連動して変化する（その逆はできない）
+void STransformData::setRotationEuler(const KVec3 &euler_degrees) {
+#if 1
+	KQuat q;
+	q = KQuat::mul_xrot(q, KMath::degToRad(euler_degrees.x));
+	q = KQuat::mul_yrot(q, KMath::degToRad(euler_degrees.y));
+	q = KQuat::mul_zrot(q, KMath::degToRad(euler_degrees.z));
+	m_Rotation = q;
+#else
+	m_Rotation = KQuat::fromXDeg(euler_degrees.x) * KQuat::fromYDeg(euler_degrees.y) * KQuat::fromZDeg(euler_degrees.z);
+#endif
+	m_RotationEuler = euler_degrees;
+	m_UsingEuler = true;
+	_updateTree();
+}
+const KMatrix4 & STransformData::getLocalMatrix() const {
+	if (m_DirtyLocalMatrix) {
+		_updateLocalMatrix();
+	}
+	return m_LocalMatrix;
+}
+const KMatrix4 & STransformData::getLocalMatrixInversed() const {
+	if (m_DirtyLocalMatrix) {
+		_updateLocalMatrix();
+	}
+	return m_LocalMatrixInv;
+}
+/// 移動、拡大、回転では設定できないようなカスタム変形行列を指定する（Skewなど）
+/// この行列は 移動、拡大、回転 に追加で適用される
+/// あらかじめ逆行列が分かっている場合は matrix_inv を指定する。これが nullptr の場合は自動的に逆行列を計算する
+void STransformData::setCustomTransform(const KMatrix4 &matrix, const KMatrix4 *p_matrix_inv) {
+	if (matrix.equals(KMatrix4(), FLT_MIN)) { // is identity?
+		// 単位行列を指定した（カスタム行列使用しない設定にした）
+		m_CustomMatrix = KMatrix4();
+		m_CustomMatrixInv = KMatrix4();
+		m_UsingCustom = false;
+		m_DirtyLocalMatrix = true;
+	} else {
+		m_CustomMatrix = matrix;
+		if (p_matrix_inv) {
+			m_CustomMatrixInv = *p_matrix_inv;
+		} else {
+			m_CustomMatrixInv = matrix.inverse();
+		}
+		m_UsingCustom = true;
+		m_DirtyLocalMatrix = true;
+	}
+	_updateTree();
+}
+void STransformData::getCustomTransform(KMatrix4 *out_matrix, KMatrix4 *out_matrix_inv) const {
+	if (out_matrix) *out_matrix = m_CustomMatrix;
+	if (out_matrix_inv) *out_matrix_inv = m_CustomMatrixInv;
+}
+void STransformData::getWorld2LocalMatrix(KMatrix4 *out) const {
+	KMatrix4 m;
+	const KNode *node = m_Node;
+	while (node) {
+		const STransformData &node_tr = node->_getTransformData();
+		const KMatrix4 &inv_tm = node_tr.getLocalMatrixInversed();
+		m = inv_tm * m;
+		if (node_tr.getTransformInherit() == false) {
+			break; // これ以上親をたどらない
+		}
+		node = node->getParent();
+	}
+	if (out) *out = m;
+}
+KMatrix4 STransformData::getWorld2LocalMatrix() const {
+	KMatrix4 mat;
+	getWorld2LocalMatrix(&mat);
+	return mat;
+}
+void STransformData::getLocal2WorldMatrix(KMatrix4 *out) const {
+	if (m_DirtyWorldMatrix) {
+		m_WorldMatrix = getLocalMatrix();
+		if (m_InheritTransform == false) {
+			// 親の変形を継承しない
+		} else {
+			KMatrix4 parent_matrix;
+			if (m_Node->getParent()) {
+				m_Node->getParent()->_getTransformData().getLocal2WorldMatrix(&parent_matrix);
+			}
+			m_WorldMatrix = m_WorldMatrix * parent_matrix;
+		}
+		m_DirtyWorldMatrix = false;
+	}
+	if (out) *out = m_WorldMatrix;
+}
+KMatrix4 STransformData::getLocal2WorldMatrix() const {
+	KMatrix4 mat;
+	getLocal2WorldMatrix(&mat);
+	return mat;
+}
+void STransformData::getLocal2WorldRotation(KQuat *p_rot) const {
+	KNode *parent = m_Node->getParent();
+	if (parent) {
+		const STransformData &parent_tr = parent->_getTransformData();
+		KQuat parent_rot;
+		parent_tr.getLocal2WorldRotation(&parent_rot);
+		*p_rot = parent_rot * getRotation();
+	} else {
+		*p_rot = getRotation();
+	}
+}
+KQuat STransformData::getLocal2WorldRotation() const {
+	KQuat rot;
+	getLocal2WorldRotation(&rot);
+	return rot;
+}
+void STransformData::setTransformInherit(bool value) {
+	m_InheritTransform = value;
+	_updateTree();
+}
+bool STransformData::getTransformInherit() const {
+	return m_InheritTransform;
+}
+KVec3 STransformData::getWorldPosition() const {
+	KMatrix4 m;
+	getLocal2WorldMatrix(&m);
+	return m.transformZero(); // m.transform(KVec3(0, 0, 0));
+}
+KVec3 STransformData::localToWorldPoint(const KVec3 &local) const {
+	KMatrix4 m;
+	getLocal2WorldMatrix(&m);
+	return m.transform(local);
+}
+KVec3 STransformData::worldToLocalPoint(const KVec3 &world) const {
+	KMatrix4 m;
+	getWorld2LocalMatrix(&m);
+	return m.transform(world);
+}
+void STransformData::copyTransform(const KNode *other, bool copy_independent_flag) {
+	if (other == nullptr) return;
+	const STransformData &other_tr = other->_getTransformData();
+	setPosition(other_tr.getPosition());
+	setScale(other_tr.getScale());
+	setRotation(other_tr.getRotation());
+	KMatrix4 tm, tm_inv;
+	other_tr.getCustomTransform(&tm, &tm_inv);
+	setCustomTransform(tm, &tm_inv);
+	if (copy_independent_flag) {
+		setTransformInherit(other_tr.getTransformInherit());
+	}
+}
+void STransformData::_updateLocalMatrix() const {
+	m_DirtyLocalMatrix = false;
+
+	// 基本変形行列
+	KMatrix4 sc_ro_tr;
+	KMatrix4 inv_tr_ro_sc;
+	if (m_Rotation.equals(KQuat(), FLT_MIN)) {
+		// 回転なし
+		sc_ro_tr = _MakeMatrix_Sc_Tr(m_Scale, m_Position);
+		inv_tr_ro_sc = _MakeMatrix_Inv_Tr_Sc(m_Position, m_Scale);
+	} else {
+		// 回転あり
+		KMatrix4 Tr = KMatrix4::fromTranslation(m_Position);
+		KMatrix4 Ro = KMatrix4::fromRotation(m_Rotation);
+		KMatrix4 Sc = KMatrix4::fromScale(m_Scale);
+		sc_ro_tr = Sc * Ro * Tr;
+
+		KMatrix4 inv_Tr = KMatrix4::fromTranslation(-m_Position);
+		KMatrix4 inv_Ro = KMatrix4::fromRotation(m_Rotation.inverse());
+		KMatrix4 inv_Sc = KMatrix4::fromScale(1.0f / m_Scale.x, 1.0f / m_Scale.y, 1.0f / m_Scale.z);
+		inv_tr_ro_sc = inv_Tr * inv_Ro * inv_Sc;
+	}
+	
+	// カスタム変形行列
+	if (m_UsingCustom) {
+		m_LocalMatrix = m_CustomMatrix * sc_ro_tr;
+		m_LocalMatrixInv = inv_tr_ro_sc * m_CustomMatrixInv;
+	} else {
+		m_LocalMatrix = sc_ro_tr;
+		m_LocalMatrixInv = inv_tr_ro_sc;
+	}
+}
+void STransformData::_updateWorldMatrix(const KMatrix4 &parent) const {
+	if (m_InheritTransform) {
+		m_WorldMatrix = m_LocalMatrix * parent;
+	} else {
+		m_WorldMatrix = m_LocalMatrix;
+	}
+	for (size_t i=0; i<m_Node->getChildCount(); i++) {
+		KNode *child = m_Node->getChildFast(i);
+		STransformData &data = child->_getTransformData();
+		data._updateWorldMatrix(m_WorldMatrix);
+	}
+}
+void STransformData::_setDirtyWorldMatrix() {
+	m_DirtyWorldMatrix = true;
+	for (size_t i=0; i<m_Node->getChildCount(); i++) {
+		KNode *child = m_Node->getChildFast(i);
+		STransformData &data = child->_getTransformData();
+		data._setDirtyWorldMatrix();
+	}
+}
+void STransformData::_updateTree() {
+	#if TEST_WORLDMATRIX
+	_updateLocalMatrix();
+	if (m_Node->getParent()) {
+		STransformData &parent_tr = m_Node->getParent()->_getTransformData();
+		_updateWorldMatrix(parent_tr.m_WorldMatrix);
+	} else {
+		_updateWorldMatrix(m_LocalMatrix);
+	}
+	#else
+	m_DirtyLocalMatrix = true;
+	_setDirtyWorldMatrix();
+	#endif
+}
+
+#pragma endregion // STransformData
+
+
+
+
+
+
+#pragma region STagData
+STagData::STagData() {
+	m_Node = nullptr;
+}
+bool STagData::hasTag(const KTag &tag) const {
+	return KNameList_contains(m_SelfTags, tag);
+}
+bool STagData::hasTagInTree(const KTag &tag) const {
+	return KNameList_contains(getTagListInTree(), tag);
+}
+const KNameList & STagData::getTagList() const {
+	return m_SelfTags;
+}
+const KNameList & STagData::getTagListInherited() const {
+	return m_ParentTags;
+}
+const KNameList & STagData::getTagListInTree() const {
+	return m_TagsInTree;
+}
+void STagData::setTag(const KTag &tag) {
+	_setTagEx(tag, false);
+}
+void STagData::_setTagEx(const KTag &tag, bool is_inherited) {
+	K__ASSERT(!tag.empty());
+	if (is_inherited) {
+		// 継承タグリストに追加
+		if (KNameList_pushback_unique(m_ParentTags, tag)) {
+			//	if (get_tree()) {
+			//		KNodeTree_add_tag(get_tree(), this, tag);
+			//	}
+		}
+	} else {
+		// 自身のタグリストに追加
+		if (KNameList_pushback_unique(m_SelfTags, tag)) {
+			if (m_Node->get_tree()) {
+				KNodeTree_add_tag(m_Node->get_tree(), m_Node, tag);
+			}
+		}
+	}
+
+	// ツリー内タグリストを更新
+	{
+		m_TagsInTree = m_SelfTags;
+		KNameList_merge_unique(m_TagsInTree, m_ParentTags);
+	}
+
+	// 子に伝番
+	if (is_inherited && KNameList_contains(m_SelfTags, tag)) {
+		// 親から継承したタグを追加しているが、自分自身も同じタグを持っている。
+		// 子ツリーは自分のタグを継承していることになるので、
+		// これ以上子をたどって追加する必要はない
+	} else {
+		for (int i=0; i<m_Node->getChildCount(); i++) {
+			KNode *child = m_Node->getChildFast(i);
+			STagData &data = child->_getTagData();
+			data._setTagEx(tag, true);
+		}
+	}
+}
+
+void STagData::removeTag(const KTag &tag) {
+	_removeTagEx(tag, false);
+}
+void STagData::_removeTagEx(const KTag &tag, bool is_inherited) {
+	K__ASSERT(!tag.empty());
+	if (is_inherited) {
+		// 継承タグリストから削除
+		if (KNameList_erase(m_ParentTags, tag)) {
+		//	if (get_tree()) {
+		//		KNodeTree_del_tag(get_tree(), this, tag);
+		//	}
+		}
+	} else {
+		// 自身のタグリストから削除
+		if (KNameList_erase(m_SelfTags, tag)) {
+			if (m_Node->get_tree()) {
+				KNodeTree_del_tag(m_Node->get_tree(), m_Node, tag);
+			}
+		}
+	}
+
+	// ツリー内タグリストを更新
+	{
+		m_TagsInTree = m_SelfTags;
+		KNameList_merge_unique(m_TagsInTree, m_ParentTags);
+	}
+
+	// 子に伝番
+	if (is_inherited && KNameList_contains(m_SelfTags, tag)) {
+		// 親から継承したタグを削除しているが、自分自身も同じタグを持っている。
+		// 子ツリーは自分のタグを継承していることになるので、
+		// これ以上子をたどって削除する必要はない
+	} else {
+		for (int i=0; i<m_Node->getChildCount(); i++) {
+			KNode *child = m_Node->getChildFast(i);
+			STagData &data = child->_getTagData();
+			data._removeTagEx(tag, true);
+		}
+	}
+}
+void STagData::_updateNodeTreeTags(bool add) {
+	K__ASSERT(m_Node->get_tree());
+	if (add) {
+		// ノードツリー側に自分のタグを追加する
+		for (auto it=m_SelfTags.begin(); it!=m_SelfTags.end(); ++it) {
+			KNodeTree_add_tag(m_Node->get_tree(), m_Node, *it);
+		}
+
+	} else {
+		// ノードツリー側から自分のタグを削除する
+		for (auto it=m_SelfTags.begin(); it!=m_SelfTags.end(); ++it) {
+			KNodeTree_del_tag(m_Node->get_tree(), m_Node, *it);
+		}
+	}
+
+	// 子に伝番
+	for (int i=0; i<m_Node->getChildCount(); i++) {
+		KNode *child = m_Node->getChildFast(i);
+		STagData &data = child->_getTagData();
+		data._updateNodeTreeTags(add);
+	}
+}
+
+void STagData::_beginParentChange() {
+	if (m_Node->get_tree()) {
+		// 自分の（および子の）タグをノードツリーから外す
+		_updateNodeTreeTags(false);
+
+		// 古い親から継承したタグを外す
+		if (m_Node->getParent()) {
+			const STagData &parent_data = m_Node->getParent()->_getTagData();
+			for (auto it=parent_data.m_TagsInTree.begin(); it!=parent_data.m_TagsInTree.end(); ++it) {
+				_removeTagEx(*it, true);
+			}
+		}
+	}
+}
+
+void STagData::_endParentChange() {
+	if (m_Node->get_tree()) {
+		// 自分の（および子の）タグをノードツリーに追加する
+		_updateNodeTreeTags(true);
+
+		// 新しい親から継承したタグを追加する
+		if (m_Node->getParent()) {
+			const STagData &parent_data = m_Node->getParent()->_getTagData();
+			for (auto it=parent_data.m_TagsInTree.begin(); it!=parent_data.m_TagsInTree.end(); ++it) {
+				_setTagEx(*it, true);
+			}
+		}
+	}
+}
+#pragma endregion // STagData
+
+
+
+
+#pragma region SFlagData
+SFlagData::SFlagData() {
+	m_Bits = 0;
+	m_BitsInTreeAll = 0;
+	m_BitsInTreeAny = 0;
+	m_Node = nullptr;
+}
+bool SFlagData::hasFlag(uint32_t flag) const {
+	return m_Bits & flag;
+}
+bool SFlagData::hasFlagInTreeAll(uint32_t flag) const {
+	return m_BitsInTreeAll & flag;
+}
+bool SFlagData::hasFlagInTreeAny(uint32_t flag) const {
+	return m_BitsInTreeAny & flag;
+}
+uint32_t SFlagData::getFlagBits() const {
+	return m_Bits;
+}
+uint32_t SFlagData::getFlagBitsInTreeAll() const {
+	return m_BitsInTreeAll;
+}
+uint32_t SFlagData::getFlagBitsInTreeAny() const {
+	return m_BitsInTreeAny;
+}
+void SFlagData::setFlag(uint32_t flag, bool value) {
+	bool b = m_Bits & flag;
+	if (b != value) {
+		if (value) {
+			m_Bits |= flag;
+		} else {
+			m_Bits &= ~flag;
+		}
+		_updateTree();
+	}
+}
+void SFlagData::_updateTree() {
+	KNode *parent = m_Node->getParent();
+	if (parent) {
+		const SFlagData &data = parent->_getFlagData();
+		_updateTree(&data);
+	} else {
+		_updateTree(nullptr);
+	}
+}
+void SFlagData::_updateTree(const SFlagData *parent) {
+	if (parent) {
+		m_BitsInTreeAll = m_Bits & parent->m_BitsInTreeAll;
+		m_BitsInTreeAny = m_Bits | parent->m_BitsInTreeAny;
+	} else {
+		m_BitsInTreeAll = m_Bits;
+		m_BitsInTreeAny = m_Bits;
+	}
+
+	// 子に伝搬
+	for (int i=0; i<m_Node->getChildCount(); i++) {
+		KNode *child = m_Node->getChild(i);
+		SFlagData &data = child->_getFlagData();
+		data._updateTree(this);
+	}
+}
+#pragma endregion // SFlagData
+
+
+
+
+#pragma region SRenderData
+SRenderData::SRenderData() {
+	m_Diffuse = KColor::WHITE;
+	m_Specular = KColor::ZERO;
+	m_DiffuseInTree = KColor::WHITE;
+	m_SpecularInTree = KColor::ZERO;
+	m_InheritDiffuse = true;
+	m_InheritSpecular = true;
+	m_RenderAtomic = false;
+	m_RenderAfterChildren = false;
+	m_ViewCulling = true;
+	m_LocalRenderOrder = KLocalRenderOrder_DEFAULT;
+	m_Layer = 0;
+	m_LayerInTree = 0;
+	m_Priority = 0;
+	m_PriorityInTree = 0;
+	m_Node = nullptr;
+}
+const KColor & SRenderData::getColor() const {
+	return m_Diffuse;
+}
+const KColor & SRenderData::getSpecular() const {
+	return m_Specular;
+}
+const KColor & SRenderData::getColorInTree() const {
+	return m_DiffuseInTree;
+}
+const KColor & SRenderData::getSpecularInTree() const {
+	return m_SpecularInTree;
+}
+void SRenderData::setColorInherit(bool value) {
+	m_InheritDiffuse = value;
+	_updateTree();
+}
+bool SRenderData::getColorInherit() const {
+	return m_InheritDiffuse;
+}
+void SRenderData::setSpecularInherit(bool value) {
+	m_InheritSpecular = value;
+	_updateTree();
+}
+bool SRenderData::getSpecularInherit() const {
+	return m_InheritSpecular;
+}
+void SRenderData::setColor(const KColor &value) {
+	m_Diffuse = value;
+	_updateTree();
+}
+void SRenderData::setSpecular(const KColor &value) {
+	m_Specular = value;
+	_updateTree();
+}
+void SRenderData::setAlpha(float alpha) {
+	m_Diffuse.a = KMath::clampf(alpha, 0.0f, 1.0f);
+	_updateTree();
+}
+float SRenderData::getAlpha() const {
+	return m_Diffuse.a;
+}
+void SRenderData::_updateTree() {
+	KNode *parent = m_Node->getParent();
+	if (parent) {
+		const SRenderData &data = parent->_getRenderData();
+		_updateTree(&data);
+	} else {
+		_updateTree(nullptr);
+	}
+}
+void SRenderData::_updateTree(const SRenderData *parent) {
+	// Diffuse
+	if (parent && m_InheritDiffuse) {
+		m_DiffuseInTree = m_Diffuse * parent->m_DiffuseInTree; // 乗算合成
+	} else {
+		m_DiffuseInTree = m_Diffuse;
+	}
+
+	// Specular
+	if (parent && m_InheritSpecular) {
+		m_SpecularInTree = m_Specular + parent->m_SpecularInTree; // 加算合成
+	} else {
+		m_SpecularInTree = m_Specular;
+	}
+
+	// Layer
+	if (parent && m_Layer == 0) {
+		m_LayerInTree = parent->m_LayerInTree;
+	} else {
+		m_LayerInTree = m_Layer;
+	}
+
+	// Priority
+	if (parent && m_Priority == 0) {
+		m_PriorityInTree = parent->m_PriorityInTree;
+	} else {
+		m_PriorityInTree = m_Priority;
+	}
+
+	// 子に伝搬
+	for (int i=0; i<m_Node->getChildCount(); i++) {
+		KNode *child = m_Node->getChildFast(i);
+		SRenderData &data = child->_getRenderData();
+		data._updateTree(this);
+	}
+}
+void SRenderData::setRenderAtomic(bool value) {
+	m_RenderAtomic = value;
+}
+bool SRenderData::getRenderAtomic() const {
+	return m_RenderAtomic;
+}
+void SRenderData::setRenderAfterChildren(bool value) {
+	m_RenderAfterChildren = value;
+}
+bool SRenderData::getRenderAfterChildren() const {
+	return m_RenderAfterChildren;
+}
+void SRenderData::setViewCulling(bool value) {
+	m_ViewCulling = value;
+}
+bool SRenderData::getViewCulling() const {
+	return m_ViewCulling;
+}
+bool SRenderData::getViewCullingInTree() const {
+	bool result = true;
+	const KNode *node = m_Node;
+	while (node && result) {
+		const SRenderData &node_ren = node->_getRenderData();
+		result = result && node_ren.getViewCulling();
+		node = node->getParent();
+	}
+	return result;
+}
+KLocalRenderOrder SRenderData::getLocalRenderOrder() const {
+	return m_LocalRenderOrder;
+}
+void SRenderData::setLocalRenderOrder(KLocalRenderOrder lro) {
+	m_LocalRenderOrder = lro;
+}
+void SRenderData::setLayer(int value) {
+	m_Layer = value;
+	_updateTree();
+}
+int SRenderData::getLayer() const {
+	return m_Layer;
+}
+int SRenderData::getLayerInTree() const {
+	return m_LayerInTree;
+}
+void SRenderData::setPriority(int value) {
+	m_Priority = value;
+	_updateTree();
+}
+int SRenderData::getPriority() const {
+	return m_Priority;
+}
+int SRenderData::getPriorityInTree() const {
+	return m_PriorityInTree;
+}
+#pragma endregion // SRenderData
+
+
+
+
 
 
 
@@ -24,21 +734,20 @@ __nodiscard__ KNode * KNode::create() {
 	return new KNode();
 }
 
-
-
-
 KNode::KNode() {
 #ifdef _DEBUG
 	m_pName = &m_NodeData.name;
 	m_pParent = &m_NodeData.parent;
 #endif
 	m_NodeData = NodeData();
-	m_TransformData = TransformData();
-	m_RenderData = RenderData();
-	m_FlagData = FlagData();
-	m_TagData = TagData();
-	m_LocalRenderOrder = LRO_DEFAULT;
-	memset(m_GroupNumbers, 0, sizeof(m_GroupNumbers));
+	m_TransformData = STransformData();
+	m_TransformData.m_Node = this;
+	m_TagData = STagData();
+	m_TagData.m_Node = this;
+	m_FlagData = SFlagData();
+	m_FlagData.m_Node = this;
+	m_RenderData = SRenderData();
+	m_RenderData.m_Node = this;
 	m_ActionNext = nullptr;
 	m_ActionCurr = nullptr;
 	m_NodeData.uuid = (EID)(++g_KNode_unique_id);
@@ -83,12 +792,6 @@ std::string KNode::getWarningString() {
 
 
 
-static void KNodeTree_on_node_enter(CNodeTreeImpl *tree, KNode *node);
-static void KNodeTree_on_node_exit(CNodeTreeImpl *tree, KNode *node);
-static void KNodeTree_on_node_removing(CNodeTreeImpl *tree, KNode *node);
-static void KNodeTree_add_tag(CNodeTreeImpl *tree, KNode *node, const KName &tag);
-static void KNodeTree_del_tag(CNodeTreeImpl *tree, KNode *node, const KName &tag);
-static void KNodeTree_on_node_marked_as_remove(CNodeTreeImpl *tree, KNode *node);
 
 #pragma region Tree
 CNodeTreeImpl * KNode::get_tree() const {
@@ -184,6 +887,7 @@ void KNode::setParent(KNode *new_parent) {
 		K__ERROR("Parent node can not have itself as a child");
 		return;
 	}
+	m_TagData._beginParentChange();
 
 	grab();
 	{
@@ -202,10 +906,11 @@ void KNode::setParent(KNode *new_parent) {
 	drop();
 
 	// 親が変化した。親に影響を受けるパラメータ類も更新する
-	_SetDirtyWorldMatrix();
-	setTagsDirty();
-	_updateFlagBits();
 	_updateNames();
+	m_TransformData._updateTree();
+	m_FlagData._updateTree();
+	m_RenderData._updateTree();
+	m_TagData._endParentChange();
 
 	K__ASSERT(m_NodeData.parent == new_parent);
 }
@@ -522,12 +1227,14 @@ EID KNode::getId() const {
 }
 void KNode::_updateNames() {
 	if (m_NodeData.parent) {
-		m_NodeData.nameInTree = m_NodeData.parent->m_NodeData.nameInTree + "/" + m_NodeData.name;
+		m_NodeData.nameInTree = m_NodeData.parent->m_NodeData.nameInTree + PATH_DELIM + m_NodeData.name;
 	} else {
 		m_NodeData.nameInTree = m_NodeData.name;
 	}
+
 	for (auto it=m_NodeData.children.begin(); it!=m_NodeData.children.end(); ++it) {
-		(*it)->_updateNames();
+		KNode *child = *it;
+		child->_updateNames();
 	}
 }
 #pragma endregion // Name and ID
@@ -539,285 +1246,97 @@ void KNode::_updateNames() {
 
 #pragma region Transform
 const KVec3 & KNode::getPosition() const {
-	return m_TransformData.position;
+	return m_TransformData.getPosition();
 }
 const KVec3 & KNode::getScale() const {
-	return m_TransformData.scale;
+	return m_TransformData.getScale();
 }
 const KQuat & KNode::getRotation() const {
-	return m_TransformData.rotation;
+	return m_TransformData.getRotation();
 }
 void KNode::setRotationDelta(const KQuat &delta) {
-	KQuat rot = getRotation();
-	rot *= delta;
-	setRotation(rot);
+	m_TransformData.setRotationDelta(delta);
 }
 bool KNode::getRotationEuler(KVec3 *out_euler) const {
-	if (m_TransformData.using_euler) {
-		if (out_euler) *out_euler = m_TransformData.rotation_euler;
-		return true;
-	}
-	return false;
+	return m_TransformData.getRotationEuler(out_euler);
 }
 /// 座標を設定する。
 /// デフォルトの設定では、これは親ノードからの相対的な位置を表す。
 /// @note 座標、スケール、回転を親から継承したくない場合は setTransformInherit を使って継承フラグを外す
 void KNode::setPosition(const KVec3 &value) {
-	m_TransformData.position = value;
-	m_TransformData.dirty_local_matrix = true;
-	_SetDirtyWorldMatrix();
+	m_TransformData.setPosition(value);
 }
 void KNode::setPositionDelta(const KVec3 &delta) {
-	KVec3 pos = getPosition();
-	pos += delta;
-	setPosition(pos);
+	m_TransformData.setPositionDelta(delta);
 }
 /// スケールを設定する。
 /// デフォルトの設定では、これは親ノードからの相対的なスケールを表す。
 /// @note 座標、スケール、回転を親から継承したくない場合は setTransformInherit を使って継承フラグを外す
 void KNode::setScale(const KVec3 &value) {
-	m_TransformData.scale = value;
-	m_TransformData.dirty_local_matrix = true;
-	_SetDirtyWorldMatrix();
+	m_TransformData.setScale(value);
 }
 /// 回転をクォータニオンで設定する。
 /// クォータニオンからオイラー角への変換は一意に定まらないため、
 /// クォータニオンを設定すると getRotationEuler によるオイラー角取得ができなくなる
 void KNode::setRotation(const KQuat &value) {
-	m_TransformData.rotation = value;
-	m_TransformData.rotation_euler = KVec3();
-	m_TransformData.using_euler = false;
-	m_TransformData.dirty_local_matrix = true;
-	_SetDirtyWorldMatrix();
+	m_TransformData.setRotation(value);
 }
 /// 回転をオイラー角で設定する。
 /// 角度の適用順序は X --> Y --> Z である。
 /// オイラー角を適用するとクォータニオンも連動して変化する（その逆はできない）
 void KNode::setRotationEuler(const KVec3 &euler_degrees) {
-	m_TransformData.rotation = KQuat::fromXDeg(euler_degrees.x) * KQuat::fromYDeg(euler_degrees.y) * KQuat::fromZDeg(euler_degrees.z);
-	m_TransformData.rotation_euler = euler_degrees;
-	m_TransformData.using_euler = true;
-	m_TransformData.dirty_local_matrix = true;
-	_SetDirtyWorldMatrix();
+	m_TransformData.setRotationEuler(euler_degrees);
 }
 const KMatrix4 & KNode::getLocalMatrix() const {
-	if (m_TransformData.dirty_local_matrix) {
-		_UpdateMatrix();
-	}
-	return m_TransformData.local_matrix;
+	return m_TransformData.getLocalMatrix();
 }
 const KMatrix4 & KNode::getLocalMatrixInversed() const {
-	if (m_TransformData.dirty_local_matrix) {
-		_UpdateMatrix();
-	}
-	return m_TransformData.local_matrix_inv;
+	return m_TransformData.getLocalMatrixInversed();
 }
 /// 移動、拡大、回転では設定できないようなカスタム変形行列を指定する（Skewなど）
 /// この行列は 移動、拡大、回転 に追加で適用される
 /// あらかじめ逆行列が分かっている場合は matrix_inv を指定する。これが nullptr の場合は自動的に逆行列を計算する
 void KNode::setCustomTransform(const KMatrix4 &matrix, const KMatrix4 *p_matrix_inv) {
-	if (matrix.equals(KMatrix4(), FLT_MIN)) { // is identity?
-		// 単位行列を指定した（カスタム行列使用しない設定にした）
-		m_TransformData.custom_transform = KMatrix4();
-		m_TransformData.custom_transform_inv = KMatrix4();
-		m_TransformData.using_custom = false;
-		m_TransformData.dirty_local_matrix = true;
-	} else {
-		m_TransformData.custom_transform = matrix;
-		if (p_matrix_inv) {
-			m_TransformData.custom_transform_inv = *p_matrix_inv;
-		} else {
-			m_TransformData.custom_transform_inv = matrix.inverse();
-		}
-		m_TransformData.using_custom = true;
-		m_TransformData.dirty_local_matrix = true;
-	}
-	_SetDirtyWorldMatrix();
+	m_TransformData.setCustomTransform(matrix, p_matrix_inv);
 }
 void KNode::getCustomTransform(KMatrix4 *out_matrix, KMatrix4 *out_matrix_inv) const {
-	if (out_matrix) *out_matrix = m_TransformData.custom_transform;
-	if (out_matrix_inv) *out_matrix_inv = m_TransformData.custom_transform_inv;
+	m_TransformData.getCustomTransform(out_matrix, out_matrix_inv);
 }
 void KNode::getWorld2LocalMatrix(KMatrix4 *out) const {
-	KMatrix4 m;
-	const KNode *node = this;
-	while (node) {
-		const KMatrix4 &inv_tm = node->getLocalMatrixInversed();
-		m = inv_tm * m;
-		if (node->getTransformInherit() == false) {
-			break; // これ以上親をたどらない
-		}
-		node = node->getParent();
-	}
-	if (out) *out = m;
+	m_TransformData.getWorld2LocalMatrix(out);
 }
 KMatrix4 KNode::getWorld2LocalMatrix() const {
-	KMatrix4 mat;
-	getWorld2LocalMatrix(&mat);
-	return mat;
+	return m_TransformData.getWorld2LocalMatrix();
 }
 void KNode::getLocal2WorldMatrix(KMatrix4 *out) const {
-	if (m_TransformData.dirty_world_matrix) {
-		m_TransformData.world_matrix = getLocalMatrix();
-		if (m_TransformData.inherit_transform == false) {
-			// 親の変形を継承しない
-		} else {
-			KMatrix4 parent_matrix;
-			if (m_NodeData.parent) {
-				m_NodeData.parent->getLocal2WorldMatrix(&parent_matrix);
-			}
-			m_TransformData.world_matrix = m_TransformData.world_matrix * parent_matrix;
-		}
-		m_TransformData.dirty_world_matrix = false;
-	}
-	if (out) *out = m_TransformData.world_matrix;
+	m_TransformData.getLocal2WorldMatrix(out);
 }
 KMatrix4 KNode::getLocal2WorldMatrix() const {
-	KMatrix4 mat;
-	getLocal2WorldMatrix(&mat);
-	return mat;
+	return m_TransformData.getLocal2WorldMatrix();
 }
 void KNode::getLocal2WorldRotation(KQuat *p_rot) const {
-	KNode *parent = getParent();
-	if (parent) {
-		KQuat parent_rot;
-		parent->getLocal2WorldRotation(&parent_rot);
-		*p_rot = parent_rot * getRotation();
-	} else {
-		*p_rot = getRotation();
-	}
+	m_TransformData.getLocal2WorldRotation(p_rot);
 }
 KQuat KNode::getLocal2WorldRotation() const {
-	KQuat rot;
-	getLocal2WorldRotation(&rot);
-	return rot;
+	return m_TransformData.getLocal2WorldRotation();
 }
 void KNode::setTransformInherit(bool value) {
-	m_TransformData.inherit_transform = value;
-	_SetDirtyWorldMatrix();
+	m_TransformData.setTransformInherit(value);
 }
 bool KNode::getTransformInherit() const {
-	return m_TransformData.inherit_transform;
+	return m_TransformData.getTransformInherit();
 }
 KVec3 KNode::getWorldPosition() const {
-	KMatrix4 m;
-	getLocal2WorldMatrix(&m);
-	return m.transformZero(); // m.transform(KVec3(0, 0, 0));
+	return m_TransformData.getWorldPosition();
 }
 KVec3 KNode::localToWorldPoint(const KVec3 &local) const {
-	KMatrix4 m;
-	getLocal2WorldMatrix(&m);
-	return m.transform(local);
+	return m_TransformData.localToWorldPoint(local);
 }
 KVec3 KNode::worldToLocalPoint(const KVec3 &world) const {
-	KMatrix4 m;
-	getWorld2LocalMatrix(&m);
-	return m.transform(world);
+	return m_TransformData.worldToLocalPoint(world);
 }
 void KNode::copyTransform(const KNode *other, bool copy_independent_flag) {
-	if (other == nullptr) return;
-	setPosition(other->getPosition());
-	setScale(other->getScale());
-	setRotation(other->getRotation());
-	KMatrix4 tr, tr_inv;
-	other->getCustomTransform(&tr, &tr_inv);
-	setCustomTransform(tr, &tr_inv);
-	if (copy_independent_flag) {
-		setTransformInherit(other->getTransformInherit());
-	}
-}
-
-// スケーリング * 並行移動
-static KMatrix4 _MakeMatrix_Sc_Tr(const KVec3 &sc, const KVec3 &tr) {
-//	KMatrix4 T = KMatrix4::fromTranslation(tr);
-//	KMatrix4 S = KMatrix4::fromScale(sc);
-//	KMatrix4 ST = S * T; で得られる行列 ST と同じ
-	float tmp[] = {
-		sc.x, 0.0f, 0.0f, 0.0f,
-		0.0f, sc.y, 0.0f, 0.0f,
-		0.0f, 0.0f, sc.z, 0.0f,
-		tr.x, tr.y, tr.z, 1.0f,
-	};
-	return KMatrix4(tmp);
-}
-
-// 並行移動 * スケーリング の逆行列。
-// 逆平行移動 * 逆スケーリングで求める
-static KMatrix4 _MakeMatrix_Inv_Tr_Sc(const KVec3 &tr, const KVec3 &sc) {
-	// KMatrix4 inv_T = KMatrix4::fromTranslation(-tr);
-	// KMatrix4 inv_S = KMatrix4::fromScale(sc);
-	// KMatrix4 inv_TS = inv_T * inv_S; で得られる行列 inv_TS と同じ
-	float tmp[] = {
-		 1.0f/sc.x,        0.0f,        0.0f, 0.0f,
-		      0.0f,   1.0f/sc.y,        0.0f, 0.0f,
-		      0.0f,        0.0f,   1.0f/sc.z, 0.0f,
-		-tr.x/sc.x,  -tr.y/sc.y,  -tr.z/sc.z, 1.0f,
-	};
-	return KMatrix4(tmp);
-}
-
-void KNode::_UpdateMatrix() const {
-#if TEST_MATRIX
-	m_TransformData.dirty_local_matrix = false;
-
-	// 基本変形行列
-	KMatrix4 sc_ro_tr;
-	KMatrix4 inv_tr_ro_sc;
-	if (m_TransformData.rotation.equals(KQuat(), FLT_MIN)) {
-		// 回転なし
-		sc_ro_tr = _MakeMatrix_Sc_Tr(m_TransformData.scale, m_TransformData.position);
-		inv_tr_ro_sc = _MakeMatrix_Inv_Tr_Sc(m_TransformData.position, m_TransformData.scale);
-	} else {
-		// 回転あり
-		KMatrix4 Tr = KMatrix4::fromTranslation(m_TransformData.position);
-		KMatrix4 Ro = KMatrix4::fromRotation(m_TransformData.rotation);
-		KMatrix4 Sc = KMatrix4::fromScale(m_TransformData.scale);
-		sc_ro_tr = Sc * Ro * Tr;
-
-		KMatrix4 inv_Tr = KMatrix4::fromTranslation(-m_TransformData.position);
-		KMatrix4 inv_Ro = KMatrix4::fromRotation(m_TransformData.rotation.inverse());
-		KMatrix4 inv_Sc = KMatrix4::fromScale(1.0f / m_TransformData.scale.x, 1.0f / m_TransformData.scale.y, 1.0f / m_TransformData.scale.z);
-		inv_tr_ro_sc = inv_Tr * inv_Ro * inv_Sc;
-	}
-	
-	// カスタム変形行列
-	// スケーリングと回転の中心は Pv で表される。
-	// 拡大回転 Sc * Ro を Pivot の平行移動 inv_P, P で挟む事に注意
-	if (m_TransformData.using_custom) {
-		m_TransformData.local_matrix = m_TransformData.custom_transform * sc_ro_tr;
-		m_TransformData.local_matrix_inv = inv_tr_ro_sc * m_TransformData.custom_transform_inv;
-	} else {
-		m_TransformData.local_matrix = sc_ro_tr;
-		m_TransformData.local_matrix_inv = inv_tr_ro_sc;
-	}
-#else
-	m_TransformData.dirty_local_matrix = false;
-	KMatrix4 Tr = KMatrix4::fromTranslation(m_TransformData.position);
-	KMatrix4 Ro = KMatrix4::fromRotation(m_TransformData.rotation);
-	KMatrix4 Sc = KMatrix4::fromScale(m_TransformData.scale);
-
-	KMatrix4 inv_Tr = KMatrix4::fromTranslation(-m_TransformData.position);
-	KMatrix4 inv_Ro = KMatrix4::fromRotation(m_TransformData.rotation.inverse());
-	KMatrix4 inv_Sc = KMatrix4::fromScale(1.0f / m_TransformData.scale.x, 1.0f / m_TransformData.scale.y, 1.0f / m_TransformData.scale.z);
-
-	// スケーリングと回転の中心は Pv で表される。
-	// 拡大回転 Sc * Ro を Pivot の平行移動 inv_P, P で挟む事に注意
-	m_TransformData.local_matrix = m_TransformData.custom_transform * Sc * Ro * Tr;
-
-	// 変形の逆行列を求める。
-	// 真面目に m_local_matrix から逆行列を計算するのは大変なので
-	// 平行移動や回転から直接逆行列を得る
-	m_TransformData.local_matrix_inv = inv_Tr * inv_Ro * inv_Sc * m_TransformData.custom_transform_inv; // 拡大回転 inv_Ro * inv_Sc を Pivot の平行移動 inv_P, P で挟む事に注意
-
-#endif
-}
-void KNode::_SetDirtyWorldMatrix() {
-//	if (!m_TransformData.m_dirty_world_matrix) {
-		m_TransformData.dirty_world_matrix = true;
-		for (size_t i=0; i<m_NodeData.children.size(); i++) {
-			m_NodeData.children[i]->_SetDirtyWorldMatrix();
-		}
-//	}
+	m_TransformData.copyTransform(other, copy_independent_flag);
 }
 #pragma endregion // Transform
 
@@ -827,75 +1346,67 @@ void KNode::_SetDirtyWorldMatrix() {
 
 #pragma region Color
 const KColor & KNode::getColor() const {
-	return m_RenderData.diffuse;
+	return m_RenderData.getColor();
 }
 const KColor & KNode::getSpecular() const {
-	return m_RenderData.specular;
+	return m_RenderData.getSpecular();
 }
-KColor KNode::getColorInTree() const {
-	if (m_NodeData.parent && m_RenderData.inheritDiffuse) {
-		return m_RenderData.diffuse * m_NodeData.parent->getColorInTree(); // 乗算合成
-	} else {
-		return m_RenderData.diffuse;
-	}
+const KColor & KNode::getColorInTree() const {
+	return m_RenderData.getColorInTree();
 }
-KColor KNode::getSpecularInTree() const {
-	if (m_NodeData.parent && m_RenderData.inheritSpecular) {
-		return m_RenderData.specular + m_NodeData.parent->getSpecularInTree(); // 加算合成
-	} else {
-		return m_RenderData.specular;
-	}
+const KColor & KNode::getSpecularInTree() const {
+	return m_RenderData.getSpecularInTree();
 }
 void KNode::setColorInherit(bool value) {
-	m_RenderData.inheritDiffuse = value;
+	m_RenderData.setColorInherit(value);
 }
 bool KNode::getColorInherit() const {
-	return m_RenderData.inheritDiffuse;
+	return m_RenderData.getColorInherit();
 }
 void KNode::setSpecularInherit(bool value) {
-	m_RenderData.inheritSpecular = value;
+	m_RenderData.setSpecularInherit(value);
 }
 bool KNode::getSpecularInherit() const {
-	return m_RenderData.inheritSpecular;
+	return m_RenderData.getSpecularInherit();
 }
 void KNode::setColor(const KColor &value) {
-	m_RenderData.diffuse = value;
+	m_RenderData.setColor(value);
 }
 void KNode::setSpecular(const KColor &value) {
-	m_RenderData.specular = value;
+	m_RenderData.setSpecular(value);
 }
 void KNode::setAlpha(float alpha) {
-	m_RenderData.diffuse.a = KMath::clampf(alpha, 0.0f, 1.0f);
+	m_RenderData.setAlpha(alpha);
 }
 float KNode::getAlpha() const {
-	return m_RenderData.diffuse.a;
+	return m_RenderData.getAlpha();
 }
 void KNode::setRenderAtomic(bool value) {
-	m_RenderData.render_atomic = value;
+	m_RenderData.setRenderAtomic(value);
 }
 bool KNode::getRenderAtomic() const {
-	return m_RenderData.render_atomic;
+	return m_RenderData.getRenderAtomic();
 }
 void KNode::setRenderAfterChildren(bool value) {
-	m_RenderData.render_after_children = value;
+	m_RenderData.setRenderAfterChildren(value);
 }
 bool KNode::getRenderAfterChildren() const {
-	return m_RenderData.render_after_children;
+	return m_RenderData.getRenderAfterChildren();
 }
 void KNode::setViewCulling(bool value) {
-	m_RenderData.view_culling = value;
+	m_RenderData.setViewCulling(value);
 }
 bool KNode::getViewCulling() const {
-	return m_RenderData.view_culling;
+	return m_RenderData.getViewCulling();
 }
 bool KNode::getViewCullingInTree() const {
-	bool ret = true;
-	const KNode *nd = this;
-	while (nd && ret) {
-		ret = ret && nd->getViewCulling();
-		nd = nd->getParent();
-	}
-	return ret;
+	return m_RenderData.getViewCullingInTree();
+}
+KLocalRenderOrder KNode::getLocalRenderOrder() const {
+	return m_RenderData.getLocalRenderOrder();
+}
+void KNode::setLocalRenderOrder(KLocalRenderOrder lro) {
+	m_RenderData.setLocalRenderOrder(lro);
 }
 #pragma endregion // Color
 
@@ -904,45 +1415,25 @@ bool KNode::getViewCullingInTree() const {
 
 #pragma region Flags
 bool KNode::hasFlag(Flag flag) const {
-	return m_FlagData.bits & flag;
+	return m_FlagData.hasFlag(flag);
 }
 bool KNode::hasFlagInTreeAll(Flag flag) const {
-	return m_FlagData.bitsInTreeAll & flag;
+	return m_FlagData.hasFlagInTreeAll(flag);
 }
 bool KNode::hasFlagInTreeAny(Flag flag) const {
-	return m_FlagData.bitsInTreeAny & flag;
+	return m_FlagData.hasFlagInTreeAny(flag);
 }
 KNode::Flags KNode::getFlagBits() const {
-	return m_FlagData.bits;
+	return m_FlagData.getFlagBits();
 }
 KNode::Flags KNode::getFlagBitsInTreeAll() const {
-	return m_FlagData.bitsInTreeAll;
+	return m_FlagData.getFlagBitsInTreeAll();
 }
 KNode::Flags KNode::getFlagBitsInTreeAny() const {
-	return m_FlagData.bitsInTreeAny;
+	return m_FlagData.getFlagBitsInTreeAny();
 }
 void KNode::setFlag(Flag flag, bool value) {
-	bool b = m_FlagData.bits & flag;
-	if (b != value) {
-		if (value) {
-			m_FlagData.bits |= flag;
-		} else {
-			m_FlagData.bits &= ~flag;
-		}
-		_updateFlagBits();
-	}
-}
-void KNode::_updateFlagBits() {
-	if (m_NodeData.parent) {
-		m_FlagData.bitsInTreeAll = m_FlagData.bits & m_NodeData.parent->m_FlagData.bitsInTreeAll;
-		m_FlagData.bitsInTreeAny = m_FlagData.bits | m_NodeData.parent->m_FlagData.bitsInTreeAny;
-	} else {
-		m_FlagData.bitsInTreeAll = m_FlagData.bits;
-		m_FlagData.bitsInTreeAny = m_FlagData.bits;
-	}
-	for (auto it=m_NodeData.children.begin(); it!=m_NodeData.children.end(); ++it) {
-		(*it)->_updateFlagBits();
-	}
+	m_FlagData.setFlag(flag, value);
 }
 #pragma endregion // Flags
 
@@ -951,58 +1442,28 @@ void KNode::_updateFlagBits() {
 
 #pragma region Tags
 bool KNode::hasTag(const KTag &tag) const {
-	return KNameList_contains(m_TagData.tags, tag);
+	return m_TagData.hasTag(tag);
 }
 bool KNode::hasTagInTree(const KTag &tag) const {
-	const KNameList &treetags = getTagListInTree();
-	return KNameList_contains(treetags, tag);
+	return m_TagData.hasTagInTree(tag);
 }
 const KNameList & KNode::getTagList() const {
-	return m_TagData.tags;
+	return m_TagData.getTagList();
+}
+const KNameList & KNode::getTagListInherited() const {
+	return m_TagData.getTagListInherited();
 }
 const KNameList & KNode::getTagListInTree() const {
-	if (m_TagData.dirty) {
-		m_TagData.dirty = false;
-		m_TagData.tagsInTree = m_TagData.tags; // copy
-		if (m_NodeData.parent) {
-			// 親の継承タグを追加する
-			// ※ unorderd_set で処理した方が速そうだが、タグはせいぜい数個しかつけないので配列で処理した方が早い
-			const KNameList &parent_tags = m_NodeData.parent->getTagListInTree(); // 親の継承タグ
-			for (auto pit=parent_tags.begin(); pit!=parent_tags.end(); pit++) {
-				KName ptag = *pit;
-				KNameList_pushback_unique(m_TagData.tagsInTree, ptag);
-			}
-		}
-	}
-	return m_TagData.tagsInTree;
+	return m_TagData.getTagListInTree();
 }
 void KNode::setTag(const KTag &tag) {
-	if (!hasTag(tag)) { // 重複登録防止
-
-		// 自身のタグテーブルを更新
-		m_TagData.tags.push_back(tag);
-		std::sort(m_TagData.tags.begin(), m_TagData.tags.end());
-
-		// ノードツリーのテーブルを更新
-		// ※まだノードツリーの管理下でない場合は
-		// ノードツリー設定時に更新する → _set_tree()
-		if (get_tree()) {
-			KNodeTree_add_tag(get_tree(), this, tag);
-		}
-		setTagsDirty();
-	}
+	return m_TagData.setTag(tag);
 }
 void KNode::removeTag(const KTag &tag) {
-	if (hasTag(tag)) { // tag がある場合のみ削除処理＋Dirty処理する
-		m_TagData.tags.erase(
-			std::remove(m_TagData.tags.begin(), m_TagData.tags.end(), tag),
-			m_TagData.tags.end()
-		);
-		if (get_tree()) {
-			KNodeTree_del_tag(get_tree(), this, tag);
-		}
-		setTagsDirty();
-	}
+	m_TagData.removeTag(tag);
+}
+void KNode::_updateNodeTreeTags(bool add) {
+	m_TagData._updateNodeTreeTags(add);
 }
 void KNode::copyTags(KNode *src) {
 	const KNameList &tags = src->getTagList();
@@ -1010,53 +1471,8 @@ void KNode::copyTags(KNode *src) {
 		setTag(*it);
 	}
 }
-void KNode::setTagsDirty() {
-	m_TagData.dirty = true;
-	for (size_t i=0; i<m_NodeData.children.size(); i++) {
-		m_NodeData.children[i]->setTagsDirty();
-	}
-}
 #pragma endregion // Tags
 
-
-
-
-
-#pragma region Grouping
-void KNode::set_group(Category category, int group) {
-	lock();
-	{
-		m_GroupNumbers[category] = group;
-	}
-	unlock();
-}
-int KNode::get_group(Category category) const {
-	int ret = 0;
-	lock();
-	{
-		ret = m_GroupNumbers[category];
-	}
-	unlock();
-	return ret;
-}
-int KNode::get_group_in_tree(Category category) const {
-	// 自分自身からルートまで親をさかのぼり、最初に見つかった非ゼロな値を返す
-	int ret = 0;
-	lock();
-	{
-		const KNode *tmp = this;
-		while (tmp) {
-			int value = tmp->m_GroupNumbers[category];
-			if (value != 0) {
-				ret = value;
-				break;
-			}
-			tmp = tmp->m_NodeData.parent;
-		}
-	}
-	return ret;
-}
-#pragma endregion // Flag/Grouping
 
 
 
@@ -1233,11 +1649,11 @@ void KNode::_ExitAction() {
 }
 void KNode::_DeleteAction() {
 	if (m_ActionCurr) {
-		K_Drop(m_ActionCurr);
+		K__DROP(m_ActionCurr);
 		m_ActionCurr = nullptr;
 	}
 	if (m_ActionNext) {
-		K_Drop(m_ActionNext);
+		K__DROP(m_ActionNext);
 		m_ActionNext = nullptr;
 	}
 }
@@ -1327,23 +1743,23 @@ bool KNode::getVisibleInTree() const {
 }
 
 void KNode::setLayer(int value) {
-	set_group(Category_LAYER, value);
+	m_RenderData.setLayer(value);
 }
 int KNode::getLayer() const {
-	return get_group(Category_LAYER);
+	return m_RenderData.getLayer();
 }
 int KNode::getLayerInTree() const {
-	return get_group_in_tree(Category_LAYER);
+	return m_RenderData.getLayerInTree();
 }
 
 void KNode::setPriority(int value) {
-	set_group(Category_PRIORITY, value);
+	m_RenderData.setPriority(value);
 }
 int KNode::getPriority() const {
-	return get_group(Category_PRIORITY);
+	return m_RenderData.getPriority();
 }
 int KNode::getPriorityInTree() const {
-	return get_group_in_tree(Category_PRIORITY);
+	return m_RenderData.getPriorityInTree();
 }
 #pragma endregion // Helper
 
@@ -1367,7 +1783,7 @@ public:
 	}
 	void clear() {
 		for (auto it=m_map.begin(); it!=m_map.end(); ++it) {
-			K_Drop(it->second);
+			K__DROP(it->second);
 		}
 		m_map.clear();
 	}
@@ -1393,7 +1809,7 @@ public:
 		if (contains(node)) return;
 		EID uuid = node->getId();
 		m_map[uuid] = node;
-		K_Grab(node);
+		K__GRAB(node);
 	}
 	// node があればその要素を削除する。参照カウンタを減らす
 	void remove(KNode *node) {
@@ -1401,7 +1817,7 @@ public:
 		EID uuid = node->getId();
 		auto it = m_map.find(uuid);
 		if (it != m_map.end()) {
-			K_Drop(node);
+			K__DROP(node);
 			m_map.erase(it);
 		}
 	}
@@ -1410,7 +1826,7 @@ public:
 		for (auto it=m_map.begin(); it!=m_map.end(); /*NO EXPR*/) {
 			KNode *node = it->second;
 			if (node->isInvalid()) {
-				K_Drop(node);
+				K__DROP(node);
 				it = m_map.erase(it);
 			} else {
 				it++;
@@ -1479,7 +1895,7 @@ public:
 		{
 			m_id2node_map.clear();
 			m_root->_set_tree(nullptr);
-			K_Drop(m_root); // ルート要素を削除
+			K__DROP(m_root); // ルート要素を削除
 		}
 		unlock();
 	}
@@ -1647,13 +2063,37 @@ public:
 		return nullptr;
 	}
 
-	KNode * findNodeByPath(const KNode *start, const std::string &path) const {
+	KNode * findNodeByPath(const KNode *_start, const std::string &_path) const {
 		#if IGNORE_REMOVING_NODES
 		// start が削除マーク付きツリー内にある場合は、もう削除済みとして扱う
-		if (start && start->hasFlagInTreeAny(KNode::FLAG__MARK_REMOVE)) {
+		if (_start && _start->hasFlagInTreeAny(KNode::FLAG__MARK_REMOVE)) {
 			return nullptr;
 		}
 		#endif
+
+		// パスが / から始まっている場合は絶対パスなので、 start は必ずルート要素になる
+		const KNode *start = nullptr;
+		std::string path = _path;
+		if (K::strStartsWith(_path, PATH_DELIM)) {
+			if (_start == nullptr || _start == getRoot()) {
+				start = getRoot();
+			} else {
+				// start が指定されているモノの、絶対パスの検索なのでルートからの検索に変更
+				K__WARNING("start param is overwriten with Root node");
+				start = getRoot();
+			}
+			path = _path.substr(1); // 先頭の PATH_DELIM を取り除く
+
+		} else {
+			if (_start == nullptr) {
+				start = getRoot();
+			} else {
+				start = _start;
+			}
+		}
+		if (path.empty()) {
+			return nullptr;
+		}
 
 		KNode *ret = nullptr;
 		lock();
@@ -1662,10 +2102,8 @@ public:
 		return ret;
 	}
 	KNode * find_namepath_in_tree_unsafe(const KNode *start, const std::string &path) const {
-		if (path.empty()) return nullptr; // 空文字列では検索できない
-		if (start == nullptr) {
-			start = getRoot();
-		}
+		K__ASSERT(start);
+		K__ASSERT(!path.empty());
 #if 1
 		KNode *ret = start->findChildPath(path);
 		if (ret) {

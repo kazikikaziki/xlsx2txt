@@ -41,10 +41,6 @@ public:
 	KName mName;
 	std::unordered_map<KName, KAny> mArgs;
 	int mResult;
-	int mResult_AyCharacterAttrs; // AyCharacterAttrs
-	int mItemType_AyItemType; // AyItemType
-	int mFaceEmo_AyFaceViewEmo; // AyFaceViewEmo
-	int mFacePri_AyFaceViewPriority; // AyFaceViewPriority
 	KNode *mBoss1_Node;
 	KNode *mBoss2_Node;
 	KColor mResult_Color;

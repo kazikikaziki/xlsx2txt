@@ -18,10 +18,6 @@ void KSig::clear() {
 	mArgs.clear();
 
 	mResult = 0;
-	mResult_AyCharacterAttrs = 0;
-	mItemType_AyItemType = 0;
-	mFaceEmo_AyFaceViewEmo = 0;
-	mFacePri_AyFaceViewPriority = 0;
 	mBoss1_Node = nullptr;
 	mBoss2_Node = nullptr;
 	mArg_EInputFlags = 0;

@@ -11,7 +11,7 @@ namespace Kamilo {
 
 
 #define EXCEL_ALPHABET_NUM 26
-#define EXCEL_COL_LIMIT    (EXCEL_ALPHABET_NUM * EXCEL_ALPHABET_NUM)
+#define EXCEL_COL_LIMIT    (EXCEL_ALPHABET_NUM + EXCEL_ALPHABET_NUM * EXCEL_ALPHABET_NUM) // A～Z + AA～ZZ
 #define EXCEL_ROW_LIMIT    1024
 #define HAS_CHAR(str, chr) (strchr(str, chr) != nullptr)
 
@@ -100,12 +100,12 @@ public:
 	}
 	void clear() {
 		for (size_t i=0; i<m_WorkSheets.size(); i++) {
-			K_Drop(m_WorkSheets[i]);
+			K__DROP(m_WorkSheets[i]);
 		}
 		m_WorkSheets.clear();
 		m_Strings.clear();
 		m_RowElements.clear();
-		K_Drop(m_WorkBookDoc);
+		K__DROP(m_WorkBookDoc);
 		m_FileName.clear();
 	}
 	bool empty() const {
@@ -424,13 +424,20 @@ private:
 				const KXmlElement *xCell = xRow->getChild(c);
 				if (!xCell->hasTag("c")) continue;
 
-				const char *pos = xCell->getAttrString("r");
-				int cidx = -1;
-				int ridx = -1;
-				if (parse_cell_position(pos, &cidx, &ridx)) {
-					K__ASSERT(cidx >= 0 && ridx >= 0);
-					const char *val = get_cell_text(xCell);
-					cb->onCell(cidx, ridx, val);
+				// とんでもないセル番号が入っている場合がある "ZA1" とか
+				// しかし実際には空文字列が入っているだけだったりするので、
+				// 有効な文字列が入っているかどうかを先に調べる。
+				// 空文字列のセルだった場合は存在しないものとして扱う
+				const char *val = get_cell_text(xCell);
+
+				if (val && val[0]) {
+					const char *pos = xCell->getAttrString("r");
+					int cidx = -1;
+					int ridx = -1;
+					if (parse_cell_position(pos, &cidx, &ridx)) {
+						K__ASSERT(cidx >= 0 && ridx >= 0);
+						cb->onCell(cidx, ridx, val);
+					}
 				}
 			}
 		}
@@ -562,15 +569,16 @@ private:
 std::string KExcelFile::encodeCellName(int col, int row) {
 	if (col < 0) return "";
 	if (row < 0) return "";
-	if (col < EXCEL_ALPHABET_NUM) {
+	if (col < EXCEL_ALPHABET_NUM) { // A～Z
 		char c = (char)('A' + col);
 		char s[256];
 		sprintf_s(s, sizeof(s), "%c%d", c, 1+row);
 		return s;
 	}
-	if (col < EXCEL_ALPHABET_NUM*EXCEL_ALPHABET_NUM) {
-		char c1 = (char)('A' + (col / EXCEL_ALPHABET_NUM));
-		char c2 = (char)('A' + (col % EXCEL_ALPHABET_NUM));
+	if (col < EXCEL_ALPHABET_NUM*EXCEL_ALPHABET_NUM) { // AA～ZZ
+		int off = col - EXCEL_ALPHABET_NUM; // AA=0 としたときのカラム番号
+		char c1 = (char)('A' + (off / EXCEL_ALPHABET_NUM));
+		char c2 = (char)('A' + (off % EXCEL_ALPHABET_NUM));
 		char s[256];
 		K__ASSERT(isalpha(c1));
 		K__ASSERT(isalpha(c2));
@@ -639,8 +647,8 @@ bool KExcelFile::loadFromStream(KInputStream &file, const std::string &xlsx_name
 }
 bool KExcelFile::loadFromFileName(const std::string &name) {
 	bool ok = false;
-	KInputStream file = KInputStream::fromFileName(name);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(name)) {
 		ok = m_Impl->loadFromFile(file, name);
 	}
 	if (!ok) {
@@ -650,8 +658,8 @@ bool KExcelFile::loadFromFileName(const std::string &name) {
 }
 bool KExcelFile::loadFromMemory(const void *bin, size_t size, const std::string &name) {
 	bool ok = false;
-	KInputStream file = KInputStream::fromMemory(bin, size);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openMemory(bin, size)) {
 		ok = m_Impl->loadFromFile(file, name);
 	}
 	if (!ok) {
@@ -808,8 +816,9 @@ void Test_excel(const std::string &filename) {
 	KExcelFile ef;
 	ef.loadFromFileName(filename);
 	std::string xml = ef.exportXmlString();
-	KOutputStream os = KOutputStream::fromFileName(filename + ".txt");
-	os.writeString(xml);
+	KOutputStream file;
+	file.openFileName(filename + ".txt");
+	file.writeString(xml);
 }
 
 } // Test

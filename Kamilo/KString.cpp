@@ -1727,8 +1727,8 @@ public:
 
 #pragma region KName
 static CNameStringTable & KName_GetTable() {
-	static CNameStringTable sTable;
-	return sTable;
+	static CNameStringTable s_Table;
+	return s_Table;
 }
 
 #if NAME_PTR

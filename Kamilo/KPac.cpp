@@ -23,8 +23,8 @@ public:
 		return m_Output.isOpen();
 	}
 	virtual bool addEntryFromFileName(const std::string &entry_name, const std::string &filename) {
-		KInputStream file = KInputStream::fromFileName(filename);
-		if (!file.isOpen()) {
+		KInputStream file;
+		if (!file.openFileName(filename)) {
 			K__ERROR(u8"E_PAC_WRITE: ファイル '%s' をロードできないため pac ファイルに追加しませんでした", filename.c_str());
 			return false;
 		}
@@ -76,8 +76,9 @@ KPacFileWriter::KPacFileWriter() {
 	m_Impl = nullptr;
 }
 KPacFileWriter KPacFileWriter::fromFileName(const std::string &filename) {
-	KOutputStream output = KOutputStream::fromFileName(filename);
-	return fromStream(output);
+	KOutputStream file;
+	file.openFileName(filename);
+	return fromStream(file);
 }
 KPacFileWriter KPacFileWriter::fromStream(KOutputStream &output) {
 	KPacFileWriter ret;
@@ -296,8 +297,9 @@ KPacFileReader::KPacFileReader() {
 	m_Impl = nullptr;
 }
 KPacFileReader KPacFileReader::fromFileName(const std::string &filename) {
-	KInputStream input = KInputStream::fromFileName(filename);
-	return fromStream(input);
+	KInputStream file;
+	file.openFileName(filename);
+	return fromStream(file);
 }
 KPacFileReader KPacFileReader::fromStream(KInputStream &input) {
 	KPacFileReader ret;

@@ -423,7 +423,7 @@ static void KLuapp__push_typed_value(lua_State *ls, const char *val) {
 // などのように判定している場合に意図しない動作になる。（lua で偽と判定されるのは nil, false のみ。数値の 0 は真になる）
 // "true", "false" は CLuaPrep で boolean として処理される。
 // また "nil" は CLuaPrep で nil として処理される。
-bool KLuapp_file(const char *srcfile_u8, const char *dstfile_u8, const char *name_u8, const KLuappDef *defines, int numdef) {
+bool KLuapp_file(const std::string &srcfile_u8, const std::string &dstfile_u8, const std::string &name_u8, const KLuappDef *defines, int numdef) {
 	std::string generated_lua;
 	bool ok = true;
 	if (ok) {
@@ -433,8 +433,8 @@ bool KLuapp_file(const char *srcfile_u8, const char *dstfile_u8, const char *nam
 		ok &= luaL_loadbuffer(ls, KLuapp_file_source, strlen(KLuapp_file_source), "CLuaPrep_prep") == LUA_OK;
 		ok &= lua_pcall(ls, 0, 0, 0) == LUA_OK; // 一番外側のスコープを実行
 		lua_getglobal(ls, "prep");
-		lua_pushstring(ls, srcfile_u8);
-		lua_pushstring(ls, dstfile_u8);
+		lua_pushstring(ls, srcfile_u8.c_str());
+		lua_pushstring(ls, dstfile_u8.c_str());
 		ok &= lua_pcall(ls, 2, 1, 0) == LUA_OK; // 実行
 		generated_lua = lua_tostring(ls, -1);
 		lua_close(ls);
@@ -443,7 +443,7 @@ bool KLuapp_file(const char *srcfile_u8, const char *dstfile_u8, const char *nam
 		// テキスト展開用のスクリプトを処理
 		lua_State *ls = luaL_newstate();
 		luaL_openlibs(ls);
-		luaL_loadbuffer(ls, generated_lua.c_str(), generated_lua.size(), name_u8);
+		luaL_loadbuffer(ls, generated_lua.c_str(), generated_lua.size(), name_u8.c_str());
 		// 組み込み定義があるなら、グローバル変数として追加しておく
 		if (defines) {
 			lua_getglobal(ls, "_G");
@@ -458,9 +458,8 @@ bool KLuapp_file(const char *srcfile_u8, const char *dstfile_u8, const char *nam
 	}
 	return ok;
 }
-bool KLuapp_text(std::string *dst_u8, const char *src_u8, const char *name_u8, const KLuappDef *defines, int numdef) {
+bool KLuapp_text(std::string *dst_u8, const std::string &src_u8, const std::string &name_u8, const KLuappDef *defines, int numdef) {
 	K__ASSERT(dst_u8);
-	K__ASSERT(dst_u8->c_str() != src_u8);
 	std::string generated_lua;
 	bool ok = true;
 	{
@@ -474,7 +473,7 @@ bool KLuapp_text(std::string *dst_u8, const char *src_u8, const char *name_u8, c
 
 		// prep(string.gsub(src_u8, "\r\n", "\n"))
 		lua_getglobal(ls, "prep");
-		luaL_gsub(ls, src_u8, "\r\n", "\n");
+		luaL_gsub(ls, src_u8.c_str(), "\r\n", "\n");
 		ok &= lua_pcall(ls, 1, 1, 0) == LUA_OK;
 
 		// lua のスクリプト文字列が戻り値になっているので、それを取得して終了
@@ -487,7 +486,7 @@ bool KLuapp_text(std::string *dst_u8, const char *src_u8, const char *name_u8, c
 		lua_State *ls = luaL_newstate();
 		luaL_openlibs(ls);
 
-		luaL_loadbuffer(ls, generated_lua.c_str(), generated_lua.size(), name_u8);
+		luaL_loadbuffer(ls, generated_lua.c_str(), generated_lua.size(), name_u8.c_str());
 		// 組み込み定義があるなら、グローバル変数として追加しておく
 		if (defines) {
 			lua_getglobal(ls, "_G");

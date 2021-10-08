@@ -353,6 +353,18 @@ inline bool KNameList_contains(const KNameList &list, const KName &value) {
 	return it != list.end();
 }
 
+// list が value を含んでいれば削除して true を返す
+// 含んでいない場合は何もせずに false を返す
+inline bool KNameList_erase(KNameList &list, const KName &value) {
+	auto it = std::find(list.begin(), list.end(), value);
+	if (it != list.end()) {
+		list.erase(it);
+		return true;
+	}
+	return false;
+}
+
+
 // list が value を含んでいない場合のみ、value を push_back する
 // push_back したら true を返す。すでに value を含んでいた場合は false を返す
 inline bool KNameList_pushback_unique(KNameList &list, const KName &value) {
@@ -361,6 +373,13 @@ inline bool KNameList_pushback_unique(KNameList &list, const KName &value) {
 		return true;
 	}
 	return false;
+}
+
+// list に more を結合する（内容が重複しないようにする）
+inline void KNameList_merge_unique(KNameList &list, const KNameList &more) {
+	for (auto it=more.begin(); it!=more.end(); ++it) {
+		KNameList_pushback_unique(list, *it);
+	}
 }
 #pragma endregion // KName
 

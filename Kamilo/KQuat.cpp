@@ -97,6 +97,51 @@ KQuat & KQuat::operator *= (const KVec3 &v) {
 	return *this;
 }
 
+KQuat KQuat::mul_xrot(const KQuat &a, float rad) {
+	KQuat b(
+		sinf(rad / 2.0f),
+		0,
+		0,
+		cosf(rad / 2.0f)
+	);
+	return KQuat(
+		 a.w*b.x + a.x*b.w,
+		 a.y*b.w + a.z*b.x,
+		-a.y*b.x + a.z*b.w,
+		 a.w*b.w - a.x*b.x
+	);
+}
+
+KQuat KQuat::mul_yrot(const KQuat &a, float rad) {
+	KQuat b(
+		0,
+		sinf(rad / 2.0f),
+		0,
+		cosf(rad / 2.0f)
+	);
+	return KQuat(
+		a.x*b.w - a.z*b.y,
+		a.w*b.y + a.y*b.w,
+		a.x*b.y + a.z*b.w,
+		a.w*b.w - a.y*b.y
+	);
+}
+
+KQuat KQuat::mul_zrot(const KQuat &a, float rad) {
+	KQuat b(
+		0,
+		0,
+		sinf(rad / 2.0f),
+		cosf(rad / 2.0f)
+	);
+	return KQuat(
+		 a.x*b.w + a.y*b.z,
+		-a.x*b.z + a.y*b.w,
+		 a.w*b.z + a.z*b.w,
+		 a.w*b.w - a.z*b.z
+	);
+}
+
 /// クォターニオン同士の積
 KQuat KQuat::mul(const KQuat &a, const KQuat &b) {
 	return KQuat(

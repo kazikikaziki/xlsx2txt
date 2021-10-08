@@ -16,19 +16,25 @@ public:
 	
 	class Callback {
 	public:
+		/// スキャン開始
+		virtual void onStart() {}
+
+		/// スキャン終了
+		virtual void onEnd() {}
+
 		/// ファイルを見つけた
 		/// name_u8:   ファイル名（パスを含まない）
 		/// parent_u8: 親ディレクトリ（検索開始フォルダからの相対パス）
 		/// ※ディレクトリでないファイルの場合だけ呼ばれる。ディレクトリを見つけた場合は on_dir が呼ばれる
-		virtual void onFile(const char *name_u8, const char *parent_u8) {}
+		virtual void onFile(const std::string &name_u8, const std::string &parent_u8) {}
 
 		/// ディレクトリを見つけた
 		/// enter: このディレクトリの中を再帰スキャンするなら true をセットする（何もしない場合のデフォルト値は false）
 		///        trueをセットした場合はディレクトリ内をスキャンし、脱出する時に onDirExit が呼ばれる
-		virtual void onDir(const char *name_u8, const char *parent_u8, bool *enter) {}
+		virtual void onDir(const std::string &name_u8, const std::string &parent_u8, bool *p_enter) {}
 
 		/// ディレクトリから出る
-		virtual void onDirExit(const char *name_u8, const char *parent_u8) {}
+		virtual void onDirExit(const std::string &name_u8, const std::string &parent_u8) {}
 	};
 
 	/// dir 直下にあるファイルおよびディレクトリを巡回する。

@@ -90,6 +90,158 @@ typedef int KNodeTickFlags;
 
 class CNodeTreeImpl; // internal
 
+
+struct STransformData {
+	KVec3 m_Position; // ノード座標。independent_ の値により絶対座標か相対座標かが異なる
+	KVec3 m_Scale;    // ノードのローカルスケール
+	KQuat m_Rotation; // 回転
+	KVec3 m_RotationEuler;
+	KMatrix4 m_CustomMatrix;    // pos, scale, rotation に加えて、独自に行う変形行列。
+	KMatrix4 m_CustomMatrixInv; // m_CustomTransform の逆行列
+	mutable KMatrix4 m_LocalMatrix;    // pos, scale, rotation, m_more_transform によって決まる変形行列
+	mutable KMatrix4 m_LocalMatrixInv; // m_LocalMatrix の逆行列
+	mutable KMatrix4 m_WorldMatrix;    // ワールド内での行列
+	mutable bool m_DirtyLocalMatrix;
+	mutable bool m_DirtyWorldMatrix;
+	bool m_UsingEuler;
+	bool m_UsingCustom;
+	bool m_InheritTransform;
+	KNode *m_Node;
+
+	STransformData();
+	const KVec3 & getPosition() const;
+	const KVec3 & getScale() const;
+	const KQuat & getRotation() const;
+	void setPosition(const KVec3 &value);
+	void setPositionDelta(const KVec3 &delta);
+	void setScale(const KVec3 &value);
+	void setRotation(const KQuat &value);
+	void setRotationDelta(const KQuat &delta);
+	void setRotationEuler(const KVec3 &euler_degrees); ///< 回転をオイラー角 (XYZ order)で設定する
+	bool getRotationEuler(KVec3 *out_euler_degrees) const;
+	void setCustomTransform(const KMatrix4 &matrix, const KMatrix4 *matrix_inv);
+	void getCustomTransform(KMatrix4 *out_matrix, KMatrix4 *out_matrix_inv) const;
+	const KMatrix4 & getLocalMatrix() const; ///<　移動、拡大、回転、カスタム変形をすべて適用させたときの行列
+	const KMatrix4 & getLocalMatrixInversed() const;
+	void getWorld2LocalMatrix(KMatrix4 *out) const; ///< ワールド座標からローカル座標へ変換するための行列
+	KMatrix4 getWorld2LocalMatrix() const;
+	void getLocal2WorldMatrix(KMatrix4 *out) const; ///< ローカル座標からワールド座標へ変換するための行列
+	KMatrix4 getLocal2WorldMatrix() const;
+	void getLocal2WorldRotation(KQuat *out) const; ///< ローカル回転からワールド回転へ変換するためのクォータニオン
+	KQuat getLocal2WorldRotation() const;
+	void setTransformInherit(bool value);
+	bool getTransformInherit() const;
+	KVec3 getWorldPosition() const;
+	KVec3 localToWorldPoint(const KVec3 &local) const; ///< ローカル座標をワールド座標にする @see getLocal2WorldMatrix
+	KVec3 worldToLocalPoint(const KVec3 &world) const; ///< ワールド座標をローカル座標にする @see getWorld2LocalMatrix
+	void copyTransform(const KNode *other, bool copy_independent_flag);
+	void _setDirtyWorldMatrix();
+	void _updateLocalMatrix() const; // mutable 変数を扱うので const 属性にしてある
+	void _updateWorldMatrix(const KMatrix4 &parent) const; // mutable 変数を扱うので const 属性にしてある
+	void _updateTree();
+};
+
+
+struct STagData {
+	KNameList m_SelfTags; // 自分自身のタグ
+	KNameList m_ParentTags; // 親から継承したタグ
+	KNameList m_TagsInTree; // 自分自身のタグと継承したタグを合成したもの
+	KNode *m_Node;
+
+	STagData();
+	bool hasTag(const KTag &tag) const;
+	bool hasTagInTree(const KTag &tag) const;
+	const KNameList & getTagList() const;
+	const KNameList & getTagListInTree() const;
+	const KNameList & getTagListInherited() const;
+	void setTag(const KTag &tag);
+	void removeTag(const KTag &tag);
+	void _setTagEx(const KTag &tag, bool is_inherited); 
+	void _removeTagEx(const KTag &tag, bool is_inherited);
+	void _updateNodeTreeTags(bool add);
+	void _beginParentChange();
+	void _endParentChange();
+};
+
+
+// 継承可能な論理値
+struct SFlagData {
+	uint32_t m_Bits; // 自分自身のフラグ
+	uint32_t m_BitsInTreeAll; // 自分と親ツリーのフラグビットを AND 結合したもの
+	uint32_t m_BitsInTreeAny; // 自分と親ツリーのフラグビットを OR 結合したもの
+	KNode *m_Node;
+
+	SFlagData();
+	bool hasFlag(uint32_t flag) const;
+	bool hasFlagInTreeAll(uint32_t flag) const;
+	bool hasFlagInTreeAny(uint32_t flag) const;
+	uint32_t getFlagBits() const;
+	uint32_t getFlagBitsInTreeAll() const;
+	uint32_t getFlagBitsInTreeAny() const;
+	void setFlag(uint32_t flag, bool value);
+	void _updateTree();
+	void _updateTree(const SFlagData *parent);
+};
+
+
+
+enum KLocalRenderOrder {
+	KLocalRenderOrder_DEFAULT,
+	KLocalRenderOrder_TREE,
+};
+
+struct SRenderData {
+	KColor m_Diffuse;
+	KColor m_Specular;
+	KColor m_DiffuseInTree;
+	KColor m_SpecularInTree;
+	bool m_InheritDiffuse;
+	bool m_InheritSpecular;
+	bool m_RenderAtomic;
+	bool m_RenderAfterChildren;
+	bool m_ViewCulling;
+	int m_Layer; // 描画単位によるグループ化。同じレイヤー番号を持つエンティティがまとめて描画される
+	int m_LayerInTree;
+	int m_Priority; // 描画の優先順位。番号が若いほど手前になる
+	int m_PriorityInTree;
+	KNode *m_Node;
+	KLocalRenderOrder m_LocalRenderOrder;
+
+	SRenderData();
+	const KColor & getColor() const;
+	const KColor & getSpecular() const;
+	const KColor & getColorInTree() const;
+	const KColor & getSpecularInTree() const;
+	float getAlpha() const;
+	void setColor(const KColor &color);
+	void setSpecular(const KColor &specular);
+	void setAlpha(float alpha);
+	void setColorInherit(bool value);
+	bool getColorInherit() const;
+	void setSpecularInherit(bool value);
+	bool getSpecularInherit() const;
+	void setRenderAtomic(bool value);///< 不可分。子ツリーを一つの塊として扱う（描画時に子ノードの間に別のノードが挟まらない）
+	bool getRenderAtomic() const;
+	void setRenderAfterChildren(bool value);  ///< 通常は親（自分）→子の順番で描画するが、子→親（自分）の順番で描画したい場合に使う（描画順序がツリー順になっている場合のみ）
+	bool getRenderAfterChildren() const;
+	void setViewCulling(bool value); ///< カメラの描画範囲外だった場合は描画プロセスを実行しない（描画結果だけ欲しい場合など、カメラとの位置関係と無関係に描画したい場合は false にする）
+	bool getViewCulling() const;
+	bool getViewCullingInTree() const;
+	KLocalRenderOrder getLocalRenderOrder() const;
+	void setLocalRenderOrder(KLocalRenderOrder lro);
+	void setLayer(int value);
+	int  getLayer() const;
+	int  getLayerInTree() const;
+	void setPriority(int value); // 描画の優先順位。番号が若いほど手前になる
+	int  getPriority() const;
+	int  getPriorityInTree() const;
+	void _updateTree();
+	void _updateTree(const SRenderData *parent);
+};
+
+
+
+
 class KNode: public KRef {
 public:
 	static KNode * create();
@@ -180,6 +332,36 @@ public:
 	}
 	#pragma endregion // Parent/Children/Sibling
 
+	// Find
+	// 指定された名前のノードを探す。tag を指定した場合は名前とタグの両方で探す
+	// 名前に nullptr を指定した場合はタグだけで探す。
+	KNode * findChild(const std::string &name, const KTag &tag=nullptr) const;
+	KNode * findChildInTree(const std::string &name, const KTag &tag=nullptr) const;
+	KNode * findChildInTree_unsafe(const std::string &name, const KTag &tag=nullptr) const;
+	KNode * findChildPath(const std::string &subpath) const;
+
+	// Traverse
+	void traverse_parents(KTraverseCallback *cb);
+	void traverse_children(KTraverseCallback *cb, bool recurse=true);
+
+	// Action
+	void setAction(KAction *act, bool update_now=true);
+	KAction * getAction() const;
+	template <class T> T getActionT() const {
+		return dynamic_cast<T>(getAction());
+	}
+
+	void tick(KNodeTickFlags flags); // ゲーム用の更新。デバッグ用のポーズ中は呼ばれない
+	void tick2(KNodeTickFlags flags);
+
+	void sys_tick(); // システム用の更新。デバッグ用のポーズ中でも関係なく呼ばれる
+
+	// Removing
+	void remove();
+	void remove_children();
+	void _remove_all();
+
+
 
 	#pragma region Transform
 	const KVec3 & getPosition() const;
@@ -211,16 +393,14 @@ public:
 	KVec3 localToWorldPoint(const KVec3 &local) const; ///< ローカル座標をワールド座標にする @see getLocal2WorldMatrix
 	KVec3 worldToLocalPoint(const KVec3 &world) const; ///< ワールド座標をローカル座標にする @see getWorld2LocalMatrix
 	void copyTransform(const KNode *other, bool copy_independent_flag);
-	void _SetDirtyWorldMatrix();
-	void _UpdateMatrix() const; // mutable 変数を扱うので const 属性にしてある
 	#pragma endregion // Transform
 
 
 	#pragma region Render
 	const KColor & getColor() const;
 	const KColor & getSpecular() const;
-	KColor getColorInTree() const;
-	KColor getSpecularInTree() const;
+	const KColor & getColorInTree() const;
+	const KColor & getSpecularInTree() const;
 	float getAlpha() const;
 	void setColor(const KColor &color);
 	void setSpecular(const KColor &specular);
@@ -236,6 +416,8 @@ public:
 	void setViewCulling(bool value); ///< カメラの描画範囲外だった場合は描画プロセスを実行しない（描画結果だけ欲しい場合など、カメラとの位置関係と無関係に描画したい場合は false にする）
 	bool getViewCulling() const;
 	bool getViewCullingInTree() const;
+	KLocalRenderOrder getLocalRenderOrder() const;
+	void setLocalRenderOrder(KLocalRenderOrder lro);
 	#pragma endregion // Render
 
 
@@ -247,7 +429,6 @@ public:
 	Flags getFlagBitsInTreeAll() const;
 	Flags getFlagBitsInTreeAny() const;
 	void setFlag(Flag flag, bool value);
-	void _updateFlagBits();
 	#pragma endregion // Flags
 
 
@@ -256,50 +437,15 @@ public:
 	bool hasTagInTree(const KTag &tag) const;
 	const KNameList & getTagList() const;
 	const KNameList & getTagListInTree() const;
+	const KNameList & getTagListInherited() const;
 	void setTag(const KTag &tag);
 	void removeTag(const KTag &tag);
 	void copyTags(KNode *src);
-	void setTagsDirty();
+	void _updateNodeTreeTags(bool add);
 	#pragma endregion // Tags
 
-	// Group
-	void set_group(Category category, int group);
-	int get_group(Category category) const;
-	int get_group_in_tree(Category category) const;
 
-	// Find
-	// 指定された名前のノードを探す。tag を指定した場合は名前とタグの両方で探す
-	// 名前に nullptr を指定した場合はタグだけで探す。
-	KNode * findChild(const std::string &name, const KTag &tag=nullptr) const;
-	KNode * findChildInTree(const std::string &name, const KTag &tag=nullptr) const;
-	KNode * findChildInTree_unsafe(const std::string &name, const KTag &tag=nullptr) const;
-	KNode * findChildPath(const std::string &subpath) const;
-
-
-
-	// Traverse
-	void traverse_parents(KTraverseCallback *cb);
-	void traverse_children(KTraverseCallback *cb, bool recurse=true);
-
-	// Action
-	void setAction(KAction *act, bool update_now=true);
-	KAction * getAction() const;
-	template <class T> T getActionT() const {
-		return dynamic_cast<T>(getAction());
-	}
-
-	void tick(KNodeTickFlags flags); // ゲーム用の更新。デバッグ用のポーズ中は呼ばれない
-	void tick2(KNodeTickFlags flags);
-
-	void sys_tick(); // システム用の更新。デバッグ用のポーズ中でも関係なく呼ばれる
-
-	// Removing
-	void remove();
-	void remove_children();
-	void _remove_all();
-
-	// Helper
-#if 1
+	#pragma region Helper
 	bool isInvalid() const;
 	void setPause(bool value);
 	bool getPause() const;
@@ -316,7 +462,8 @@ public:
 	void setPriority(int value);
 	int getPriority() const;
 	int getPriorityInTree() const;
-#endif
+	#pragma endregion // Helper
+
 public:
 	void _RegisterForDelete(std::vector<KNode*> &list, bool all);
 	void _ExitAction();
@@ -325,6 +472,15 @@ public:
 	void _remove_child_nocheck(KNode *node);
 	void _invalidate_child_tree();
 	void _Invalidated();
+	STransformData & _getTransformData() { return m_TransformData; }
+	const STransformData & _getTransformData() const { return m_TransformData; }
+	STagData & _getTagData() { return m_TagData; }
+	const STagData & _getTagData() const { return m_TagData; }
+	SFlagData & _getFlagData() { return m_FlagData; }
+	const SFlagData & _getFlagData() const { return m_FlagData; }
+	SRenderData & _getRenderData() { return m_RenderData; }
+	const SRenderData & _getRenderData() const { return m_RenderData; }
+
 
 private:
 	void lock() const;
@@ -355,87 +511,12 @@ private:
 		}
 	};
 	NodeData m_NodeData;
-
-	struct TransformData {
-		KVec3 position; // ノード座標。independent_ の値により絶対座標か相対座標かが異なる
-		KVec3 scale;    // ノードのローカルスケール
-		KVec3 pivot;    // 回転やスケーリングの中心座標。ローカル座標
-		KQuat rotation; // 回転
-		KVec3 rotation_euler;
-		KMatrix4 custom_transform;     // pos, scale, rotation に加えて、独自に行う変形行列。
-		KMatrix4 custom_transform_inv; // m_local_transform の逆行列
-		KMatrix4 local_matrix;         // pos, scale, rotation, m_more_transform によって決まる変形行列
-		KMatrix4 local_matrix_inv;     // ->m_local_matrix の逆行列
-		KMatrix4 world_matrix;
-		bool dirty_local_matrix;
-		bool dirty_world_matrix;
-		bool using_euler;
-		bool using_custom;
-		bool inherit_transform;
-
-		TransformData() {
-			scale = KVec3(1.0f, 1.0f, 1.0f);
-			dirty_local_matrix = true;
-			dirty_world_matrix = true;
-			using_euler = true;
-			using_custom = false;
-			inherit_transform = true;
-		}
-	};
-	mutable TransformData m_TransformData;
-
-	struct RenderData {
-		KColor diffuse;
-		KColor specular;
-		bool inheritDiffuse;
-		bool inheritSpecular;
-		bool render_atomic;
-		bool render_after_children;
-		bool view_culling;
-		RenderData() {
-			diffuse = KColor::WHITE;
-			specular = KColor::ZERO;
-			inheritDiffuse = true;
-			inheritSpecular = true;
-			render_atomic = false;
-			render_after_children = false;
-			view_culling = true;
-		}
-	};
-	RenderData m_RenderData;
-
-	struct FlagData {
-		uint32_t bits; // 自分自身のフラグ
-		uint32_t bitsInTreeAll; // 自分と親ツリーのフラグビットを AND 結合したもの
-		uint32_t bitsInTreeAny; // 自分と親ツリーのフラグビットを OR 結合したもの
-
-		FlagData() {
-			bits = 0;
-			bitsInTreeAll = 0;
-			bitsInTreeAny = 0;
-		}
-	};
-	mutable FlagData m_FlagData;
-
-	struct TagData {
-		KNameList tags;
-		KNameList tagsInTree;
-		bool dirty;
-
-		TagData() {
-			dirty = true;
-		}
-	};
-	mutable TagData m_TagData;
-
-	int m_GroupNumbers[Category_ENUM_MAX]; // KNodeCategory
+	mutable STransformData m_TransformData;
+	mutable SRenderData m_RenderData;
+	mutable SFlagData m_FlagData;
+	mutable STagData m_TagData;
 
 public:
-	enum LocalRenderOrder {
-		LRO_DEFAULT,
-		LRO_TREE,
-	};
-	LocalRenderOrder m_LocalRenderOrder;
 	mutable std::recursive_mutex m_Mutex;
 	KAction *m_ActionNext;
 	KAction *m_ActionCurr;
@@ -461,7 +542,7 @@ public:
 		return m_Node;
 	}
 	void _setNode(KNode *node) {
-		// CComp は KNode によって保持される可能性がある。
+		// KComp は KNode によって保持される可能性がある。
 		// 循環ロック防止のために KNode の参照カウンタは変更しないでおく
 		if (node) {
 			// アタッチしようとしている
@@ -478,11 +559,11 @@ private:
 };
 
 
-// TComp は CComp の継承であること!!!
-template <class TComp> class KCompNodes {
-	std::unordered_map<KNode*, TComp*> m_Nodes;
+// Co は KComp の継承であること!!!
+template <class Co> class KCompNodes {
+	std::unordered_map<KNode*, Co*> m_Nodes;
 public:
-	typedef typename std::unordered_map<KNode*, TComp*>::iterator iterator;
+	typedef typename std::unordered_map<KNode*, Co*>::iterator iterator;
 
 	KCompNodes() {
 	}
@@ -501,28 +582,28 @@ public:
 	}
 	void clear() {
 		for (auto it=m_Nodes.begin(); it!=m_Nodes.end(); ++it) {
-			TComp *comp = it->second;
-			comp->_setNode(nullptr);
+			Co *comp = it->second;
+			comp->_setNode(nullptr); // ここでエラーが起きる場合、KComp を継承していない可能性がある
 			comp->drop();
 			KNode *node = it->first;
 			node->drop();
 		}
 		m_Nodes.clear();
 	}
-	void attach(KNode *node, TComp *comp) {
+	void attach(KNode *node, Co *comp) {
 	//	assert(node);
 	//	assert(comp);
 		detach(node);
 		m_Nodes[node] = comp;
 		node->grab();
-		comp->_setNode(node);
+		comp->_setNode(node); // ここでエラーが起きる場合、KComp を継承していない可能性がある
 		comp->grab();
 	}
 	void detach(KNode *node) {
 		auto it = m_Nodes.find(node);
 		if (it != m_Nodes.end()) {
-			TComp *comp = it->second;
-			comp->_setNode(nullptr);
+			Co *comp = it->second;
+			comp->_setNode(nullptr); // ここでエラーが起きる場合、KComp を継承していない可能性がある
 			comp->drop();
 			node->drop();
 			m_Nodes.erase(it);
@@ -532,7 +613,7 @@ public:
 		auto it = m_Nodes.find(node);
 		return it != m_Nodes.end();
 	}
-	TComp * get(KNode *node) {
+	Co * get(KNode *node) {
 		auto it = m_Nodes.find(node);
 		if (it != m_Nodes.end()) {
 			return it->second;

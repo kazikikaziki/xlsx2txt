@@ -27,6 +27,11 @@ public:
 	explicit KInputStream(Impl *impl);
 	~KInputStream();
 
+	bool _open(Impl *impl);
+	bool openFileName(const std::string &filename);
+	bool openMemory(const void *data, int size);
+	bool openMemoryCopy(const void *data, int size);
+
 	/// 読み取り位置。先頭からのオフセットバイト数
 	int tell();
 	
@@ -73,6 +78,9 @@ public:
 	KOutputStream();
 	explicit KOutputStream(Impl *impl);
 	~KOutputStream();
+	bool _open(Impl *impl);
+	bool openFileName(const std::string &filename, const char *mode="wb");
+	bool openMemory(std::string *dest);
 
 	/// 読み取り位置。先頭からのオフセットバイト数
 	int tell();

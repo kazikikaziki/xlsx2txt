@@ -41,7 +41,7 @@ public:
 
 	const char * getAttrString(const char *name, const char *def=nullptr) const;
 	std::string getAttrStringStd(const char *name) const {
-		return getAttrString(""); // nullptr を返さないように！
+		return getAttrString(name, ""); // nullptr を返さないように！
 	}
 	virtual void setAttrString(const char *name, const char *value) = 0;
 	void setAttrString(const std::string &name, const std::string &value) {

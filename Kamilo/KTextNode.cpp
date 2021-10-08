@@ -1233,8 +1233,9 @@ void Test_textbox1(const char *output_dir) {
 	std::string png = img.saveToMemory();
 
 	std::string path = K::pathJoin(output_dir, "Test_textbox1.png");
-	KOutputStream output = KOutputStream::fromFileName(path);
-	output.write(png.data(), png.size());
+	KOutputStream file;
+	file.openFileName(path);
+	file.write(png.data(), png.size());
 }
 /// [test1] <--- Doxgen @snippet コマンドからの参照用なので削除してはいけない
 #pragma endregion // Test1
@@ -1410,8 +1411,9 @@ void Test_textbox2(const char *output_dir) {
 	std::string png = img.saveToMemory();
 
 	std::string path = K::pathJoin(output_dir, "Test_textbox2.png");
-	KOutputStream output = KOutputStream::fromFileName(path);
-	output.write(png.data(), png.size());
+	KOutputStream file;
+	file.openFileName(path);
+	file.write(png.data(), png.size());
 }
 /// [test2] <--- Doxgen @snippet コマンドからの参照用なので削除してはいけない
 

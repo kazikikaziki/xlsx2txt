@@ -350,8 +350,8 @@ void KLogConsole::getLevelColorFlags(char type, uint16_t *typecolor, uint16_t *m
 		break;
 
 	case KLog::LEVEL_VRB:
-		f1 = BG_BLUE|FG_WHITE;
-		f2 = BG_BLACK|FG_BLUE;
+		f1 = BG_GRAY|FG_WHITE;
+		f2 = BG_BLACK|FG_GRAY;
 		break;
 	}
 	*typecolor = f1;

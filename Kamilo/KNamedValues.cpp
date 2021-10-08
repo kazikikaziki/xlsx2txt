@@ -154,8 +154,8 @@ void KNamedValues::setString(const std::string &name, const std::string &value) 
 }
 bool KNamedValues::loadFromFile(const std::string &filename) {
 	bool success = false;
-	KInputStream file = KInputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(filename)) {
 		std::string xml_bin = file.readBin();
 		std::string xml_u8 = K::strBinToUtf8(xml_bin);
 		if (! xml_u8.empty()) {
@@ -165,8 +165,8 @@ bool KNamedValues::loadFromFile(const std::string &filename) {
 	return success;
 }
 void KNamedValues::saveToFile(const std::string &filename, bool pack_in_attr) const {
-	KOutputStream file = KOutputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KOutputStream file;
+	if (file.openFileName(filename)) {
 		std::string xml_u8 = saveToString(pack_in_attr);
 		file.write(xml_u8.c_str(), xml_u8.size());
 	}

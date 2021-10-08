@@ -109,8 +109,9 @@ public:
 				KImage img = tex->exportTextureImage();
 				std::string png = img.saveToMemory();
 				
-				KOutputStream output = KOutputStream::fromFileName(filename.u8());
-				output.write(png.data(), png.size());
+				KOutputStream file;
+				file.openFileName(filename.u8());
+				file.write(png.data(), png.size());
 
 				KLog::printInfo("Texture image saved %s", filename.getFullPath().u8());
 				m_LastOutputFileName = filename;

@@ -199,9 +199,9 @@ public:
 			KImage teximg = getPackedImage();
 			std::string png = teximg.saveToMemory(1/*FASTEST*/);
 
-			KOutputStream output = KOutputStream::fromFileName(imagefile);
-			if (output.isOpen()) {
-				output.write(png.data(), png.size());
+			KOutputStream file;
+			if (file.openFileName(imagefile)) {
+				file.write(png.data(), png.size());
 			} else {
 				K__ERROR("Failed to write imagefile: %s", imagefile.c_str());
 				return false;
@@ -213,9 +213,9 @@ public:
 			std::string meta;
 			getMetaString(&meta);
 
-			KOutputStream output = KOutputStream::fromFileName(metafile);
-			if (output.isOpen()) {
-				output.write(meta.data(), meta.size());
+			KOutputStream file;
+			if (file.openFileName(metafile)) {
+				file.write(meta.data(), meta.size());
 			} else {
 				K__ERROR("Failed to write metafile: %s", metafile.c_str());
 				return false;
@@ -224,8 +224,9 @@ public:
 
 		// デバッグ情報（使用セル数）
 		if (0) {
-			KOutputStream info = KOutputStream::fromFileName("___cells.txt", "ab");
-			info.writeString(K::str_sprintf("%s, %d\n", imagefile.c_str(), m_CellCount));
+			KOutputStream file;
+			file.openFileName("___cells.txt", "ab");
+			file.writeString(K::str_sprintf("%s, %d\n", imagefile.c_str(), m_CellCount));
 		}
 		return true;
 	}
@@ -356,7 +357,8 @@ public:
 		return true;
 	}
 	bool loadFromMetaFileName(const std::string &metafilename) {
-		KInputStream file = KInputStream::fromFileName(metafilename);
+		KInputStream file;
+		file.openFileName(metafilename);
 		std::string text = file.readBin();
 		if (text.empty()) {
 			return false;

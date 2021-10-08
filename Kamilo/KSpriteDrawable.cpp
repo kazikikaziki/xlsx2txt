@@ -99,7 +99,7 @@ bool KSpriteDrawable::getLayerAabb(int index, KVec3 *minpoint, KVec3 *maxpoint) 
 	const KSpriteAuto sp = getLayerSprite(index);
 	if (sp == nullptr) return false;
 	KVec3 p0, p1;
-	if (! sp->mMesh.getAabb(&p0, &p1)) return false;
+	if (! sp->m_Mesh.getAabb(&p0, &p1)) return false;
 	KVec3 sp_offset = sp->getRenderOffset();
 
 	if (minpoint) *minpoint = sp_offset + m_offset+ p0;
@@ -235,13 +235,13 @@ KVec3 KSpriteDrawable::bitmapToLocalPoint(int index, const KVec3 &p) {
 	if (sprite == nullptr) return KVec3();
 
 	// スプライトのpivot
-	KVec2 sprite_pivot = sprite->mPivot;
+	KVec2 sprite_pivot = sprite->m_Pivot;
 
 	// レイヤーのオフセット量
 	KVec3 layer_offset = getLayerOffset(0);
 
 	// 元画像サイズ
-	int bmp_h = sprite->mImageH;
+	int bmp_h = sprite->m_ImageH;
 
 	// ビットマップ左下基準での座標（Ｙ上向き）
 	KVec3 bmp_local(p.x, bmp_h - p.y, p.z);
@@ -260,13 +260,13 @@ KVec3 KSpriteDrawable::localToBitmapPoint(int index, const KVec3 &p) {
 	if (sprite == nullptr) return KVec3();
 
 	// スプライトのpivot
-	KVec2 sprite_pivot = sprite->mPivot;
+	KVec2 sprite_pivot = sprite->m_Pivot;
 
 	// レイヤーのオフセット量
 	KVec3 layer_offset = getLayerOffset(0);
 
 	// 元画像サイズ
-	int bmp_h = sprite->mImageH;
+	int bmp_h = sprite->m_ImageH;
 
 	// ビットマップ左下基準での座標（Ｙ上向き）
 	KVec3 bmp_local(
@@ -292,7 +292,7 @@ bool KSpriteDrawable::onDrawable_getBoundingAabb(KVec3 *min_point, KVec3 *max_po
 		if (sp != nullptr) {
 			KVec3 roff = sp->getRenderOffset();
 			KVec3 p0, p1;
-			if (sp->mMesh.getAabb(&p0, &p1)) {
+			if (sp->m_Mesh.getAabb(&p0, &p1)) {
 				p0 += roff + off;
 				p1 += roff + off;
 				m0 = p0.getmin(m0);
@@ -312,8 +312,8 @@ void KSpriteDrawable::onDrawable_getGroupImageSize(int *w, int *h, KVec3 *pivot)
 	// スプライトに使われる各レイヤー画像がすべて同じ大きさであると仮定する
 	KSpriteAuto sp = getLayerSprite(0);
 	if (sp != nullptr) {
-		int img_w = sp->mImageW;
-		int img_h = sp->mImageH;
+		int img_w = sp->m_ImageW;
+		int img_h = sp->m_ImageH;
 		// スプライトサイズが奇数でない場合は、偶数に補正する。
 		// グループ化描画する場合、レンダーターゲットが奇数だとドットバイドットでの描画が歪む
 		if (img_w % 2 == 1) img_w = (int)ceilf(img_w / 2.0f) * 2; // img_w/2*2 はダメ。img_w==1で破綻する
@@ -321,8 +321,8 @@ void KSpriteDrawable::onDrawable_getGroupImageSize(int *w, int *h, KVec3 *pivot)
 		if (w) *w = img_w;
 		if (h) *h = img_h;
 		if (pivot) {
-			KVec2 piv2d = sp->mPivot;
-			if (sp->mPivotInPixels) {
+			KVec2 piv2d = sp->m_Pivot;
+			if (sp->m_PivotInPixels) {
 				pivot->x = piv2d.x;
 				pivot->y = piv2d.y;
 				pivot->z = 0;
@@ -491,7 +491,7 @@ void KSpriteDrawable::preparateModifiedTexture(KNode *node, const char *spritena
 	KSpriteAuto sprite = KBank::getSpriteBank()->findSprite(spritename, true);
 
 	// getTextureEx を経由して on_videobank_modifier を呼ぶことが目的なので、戻り値は使わない
-	KBank::getTextureBank()->getTextureEx(sprite->mTextureName, m_modifier, true, node);
+	KBank::getTextureBank()->getTextureEx(sprite->m_TextureName, m_modifier, true, node);
 }
 
 void KSpriteDrawable::getRenderLayers(KNode *node, std::vector<RenderLayerDesc> &out_render_layers) {
@@ -552,11 +552,11 @@ void KSpriteDrawable::getRenderLayers(KNode *node, std::vector<RenderLayerDesc> 
 
 				// レンダーテクスチャをスプライトとして描画するためのメッシュを作成する
 				KMesh newmesh;
-				int w = sprite->mImageW;
-				int h = sprite->mImageH;
+				int w = sprite->m_ImageW;
+				int h = sprite->m_ImageH;
 				float u0 = 0.0f;
-				float u1 = (float)sprite->mImageW / texW;
-				float v0 = (float)(texH-sprite->mImageH) / texH;
+				float u1 = (float)sprite->m_ImageW / texW;
+				float v0 = (float)(texH-sprite->m_ImageH) / texH;
 				float v1 = 1.0f;
 				MeshShape::makeRect(&newmesh, KVec2(0, 0), KVec2(w, h), KVec2(u0, v0), KVec2(u1, v1), KColor::WHITE);
 
@@ -777,10 +777,10 @@ bool KSpriteDrawable::preparateMeshAndTextureForSprite(KNode *node, const KSprit
 
 	// テクスチャを取得する。
 	// modifier の値に応じたテクスチャの動的生成については KTextureBankCallback::on_videobank_modifier を参照せよ
-	KTEXID actual_tex = KBank::getTextureBank()->getTextureEx(sprite->mTextureName, modifier, true, node);
+	KTEXID actual_tex = KBank::getTextureBank()->getTextureEx(sprite->m_TextureName, modifier, true, node);
 
 	if (tex) *tex = actual_tex;
-	if (mesh) *mesh = sprite->mMesh;
+	if (mesh) *mesh = sprite->m_Mesh;
 	return true;
 }
 void KSpriteDrawable::onDrawable_inspector() {

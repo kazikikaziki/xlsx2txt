@@ -306,8 +306,8 @@ bool KEdgeDocument::loadFromStream(KInputStream &file) {
 }
 bool KEdgeDocument::loadFromFileName(const std::string &filename) {
 	bool success = false;
-	KInputStream file = KInputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(filename)) {
 		success = loadFromStream(file);
 	}
 	return success;
@@ -317,8 +317,8 @@ void KEdgeDocument::saveToStream(KOutputStream &file) {
 	writer.write(this, file);
 }
 void KEdgeDocument::saveToFileName(const std::string &filename) {
-	KOutputStream file = KOutputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KOutputStream file;
+	if (file.openFileName(filename)) {
 		saveToStream(file);
 	}
 }
@@ -793,16 +793,16 @@ KImage KEdgePalFile::exportImage(bool index0_for_transparent) const {
 #pragma region KEdgePalReader
 bool KEdgePalReader::loadFromFileName(const std::string &filename) {
 	bool ok = false;
-	KInputStream file = KInputStream::fromFileName(filename);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(filename)) {
 		ok = loadFromStream(file);
 	}
 	return ok;
 }
 bool KEdgePalReader::loadFromMemory(const void *data, size_t size) {
 	bool ok = false;
-	KInputStream file = KInputStream::fromMemory(data, size);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openMemory(data, size)) {
 		ok = loadFromStream(file);
 	}
 	return ok;

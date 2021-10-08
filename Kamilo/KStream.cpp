@@ -233,6 +233,49 @@ KInputStream::~KInputStream() {
 	// ここで参照がゼロになるとは限らない
 	// close();
 }
+bool KInputStream::_open(Impl *impl) {
+	if (impl) {
+		m_Impl = std::shared_ptr<Impl>(impl);
+		return true;
+	} else {
+		m_Impl = nullptr;
+		return false;
+	}
+}
+bool KInputStream::openFileName(const std::string &filename) {
+	close();
+
+	FILE *fp = K::fileOpen(filename, "rb");
+	if (fp) {
+		Impl *impl = new CFileReadImpl(fp, filename);
+		if (_open(impl)) {
+			return true;
+		}
+	}
+	return false;
+}
+bool KInputStream::openMemory(const void *data, int size) {
+	close();
+
+	if (data && size > 0) {
+		Impl *impl = new CMemoryReadImpl(data, size, false); // No copy
+		if (_open(impl)) {
+			return true;
+		}
+	}
+	return false;
+}
+bool KInputStream::openMemoryCopy(const void *data, int size) {
+	close();
+
+	if (data && size > 0) {
+		Impl *impl = new CMemoryReadImpl(data, size, true); // Copy
+		if (_open(impl)) {
+			return true;
+		}
+	}
+	return false;
+}
 int KInputStream::tell() {
 	if (m_Impl) {
 		return m_Impl->tell();
@@ -262,6 +305,7 @@ bool KInputStream::eof() {
 void KInputStream::close() {
 	if (m_Impl) {
 		m_Impl->close();
+		m_Impl = nullptr;
 	}
 }
 bool KInputStream::isOpen() {
@@ -328,9 +372,42 @@ KOutputStream::~KOutputStream() {
 	// ここで参照がゼロになるとは限らない
 	// close();
 }
+bool KOutputStream::_open(Impl *impl) {
+	if (impl) {
+		m_Impl = std::shared_ptr<Impl>(impl);
+		return true;
+	} else {
+		m_Impl = nullptr;
+		return false;
+	}
+}
+bool KOutputStream::openFileName(const std::string &filename, const char *mode) {
+	close();
+
+	FILE *fp = K::fileOpen(filename, mode);
+	if (fp) {
+		Impl *impl = new CFileWriteImpl(fp, filename);
+		if (_open(impl)) {
+			return true;
+		}
+	}
+	return false;
+}
+bool KOutputStream::openMemory(std::string *dest) {
+	close();
+
+	if (dest) {
+		Impl *impl = new CMemoryWriteImpl(dest); // No copy
+		if (_open(impl)) {
+			return true;
+		}
+	}
+	return false;
+}
 void KOutputStream::close() {
 	if (m_Impl) {
 		m_Impl->close();
+		m_Impl = nullptr;
 	}
 }
 bool KOutputStream::isOpen() {
@@ -376,7 +453,8 @@ namespace Test {
 void Test_stream() {
 	{
 		const char *text = "hello, world.";
-		KInputStream r = KInputStream::fromMemory(text, strlen(text));
+		KInputStream r;
+		r.openMemory(text, strlen(text));
 		char s[32] = {0};
 	
 		K__ASSERT(r.read(s, 5) == 5);
@@ -393,7 +471,8 @@ void Test_stream() {
 	}
 	{
 		std::string s;
-		KOutputStream w = KOutputStream::fromMemory(&s);
+		KOutputStream w;
+		w.openMemory(&s);
 		K__ASSERT(w.write("abc", 3) == 3);
 		K__ASSERT(w.write(" ",   1) == 1);
 		K__ASSERT(w.write("def", 3) == 3);

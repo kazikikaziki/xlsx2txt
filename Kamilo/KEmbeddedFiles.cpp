@@ -91,13 +91,13 @@ public:
 		return -1; // not found
 	}
 	KInputStream createStreamByName(const std::string &name) {
+		KInputStream file;
 		int size = 0;
 		const void *data = getData(getIndexOfName(name), &size);
 		if (data) {
-			return KInputStream::fromMemory(data, size);
-		} else {
-			return KInputStream();
+			file.openMemory(data, size);
 		}
+		return file;
 	}
 	const char * getNameByIndex(int index) {
 		const ITEM *item = getItem(index);

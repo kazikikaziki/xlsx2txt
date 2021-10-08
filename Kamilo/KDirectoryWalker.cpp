@@ -49,23 +49,25 @@ void KDirectoryWalker::scanW(const std::wstring &wtop, const std::wstring &wdir,
 	for (auto it=list.begin(); it!=list.end(); ++it) {
 		if (it->isdir) {
 			bool enter = false;
-			cb->onDir(it->nameu.c_str(), it->parentu.c_str(), &enter);
+			cb->onDir(it->nameu, it->parentu, &enter);
 			if (enter) {
 				wchar_t wsub[MAX_PATH] = {0};
 				wcscpy_s(wsub, MAX_PATH, wdir.c_str());
 				PathAppendW(wsub, it->namew.c_str());
 				scanW(wtop, wsub, cb);
-				cb->onDirExit(it->nameu.c_str(), it->parentu.c_str());
+				cb->onDirExit(it->nameu, it->parentu);
 			}
 		} else {
-			cb->onFile(it->nameu.c_str(), it->parentu.c_str());
+			cb->onFile(it->nameu, it->parentu);
 		}
 	}
 }
 void KDirectoryWalker::walk(const std::string &dir_u8, KDirectoryWalker::Callback *cb) {
 	K__ASSERT(cb);
 	std::wstring wdir = K::strUtf8ToWide(dir_u8);
+	cb->onStart();
 	scanW(wdir, L"", cb);
+	cb->onEnd();
 }
 
 } // namespace

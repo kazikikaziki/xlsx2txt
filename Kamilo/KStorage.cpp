@@ -58,7 +58,7 @@ public:
 		}
 	}
 
-	virtual void onFile(const char *name_u8, const char *parent_u8) override {
+	virtual void onFile(const std::string &name_u8, const std::string &parent_u8) override {
 		// KDirectoryWalker::walk でファイル（ディレクトリではない）を列挙するたびに呼ばれる。ファイルリストに登録する
 		std::string path = K::pathJoin(parent_u8, name_u8);
 		m_Names.push_back(path);
@@ -116,8 +116,8 @@ public:
 		std::string realname = K::pathJoin(m_Dir, name);
 
 		// KInputStream を取得
-		KInputStream file = KInputStream::fromFileName(realname);
-		if (file.isOpen()) {
+		KInputStream file;
+		if (file.openFileName(realname)) {
 			K::outputDebugFmt("%s(%d): %s ==> OK", __FILE__, __LINE__, realname.c_str());
 			return file;
 		}
@@ -162,16 +162,16 @@ public:
 		return r.isOpen();
 	}
 	virtual KInputStream createFileReader(const std::string &filename) override {
+		KInputStream file;
 		for (int i=0; i<m_Unzipper.getEntryCount(); i++) {
 			const char *s = getFileName(i);
 			if (K::pathCompare(s, filename, false, false) == 0) {
 				std::string bin;
 				m_Unzipper.getEntryData(i, m_Password.c_str(), &bin);
-
-				return KInputStream::fromMemoryCopy(bin.data(), bin.size());
+				file.openMemoryCopy(bin.data(), bin.size());
 			}
 		}
-		return KInputStream();
+		return file;
 	}
 	virtual int getFileCount() override {
 		return m_Unzipper.getEntryCount();
@@ -192,8 +192,8 @@ public:
 
 KArchive * KArchive::createZipReader(const std::string &zip, const std::string &password) {
 	KArchive *ar = nullptr;
-	KInputStream file = KInputStream::fromFileName(zip);
-	if (file.isOpen()) {
+	KInputStream file;
+	if (file.openFileName(zip)) {
 		int err = 0;
 		ar = new CZipArchive(file, password, &err);
 		if (err) {
@@ -234,15 +234,16 @@ public:
 		return m_PacReader.getIndexByName(name, false, false) >= 0;
 	}
 	virtual KInputStream createFileReader(const std::string &name) override {
+		KInputStream file;
 		if (PAC_CASE_CEHCK) {
 			check_filename_case(name);
 		}
 		int index = m_PacReader.getIndexByName(name, false, false);
-		if (index < 0) {
-			return KInputStream();
+		if (index >= 0) {
+			std::string bin = m_PacReader.getData(index);
+			file.openMemoryCopy(bin.data(), bin.size());
 		}
-		std::string bin = m_PacReader.getData(index);
-		return KInputStream::fromMemoryCopy(bin.data(), bin.size());
+		return file;
 	}
 	virtual int getFileCount() override {
 		return m_PacReader.getCount();
@@ -254,7 +255,9 @@ public:
 };
 KArchive * KArchive::createPacReader(const std::string &filename) {
 	KArchive *archive = nullptr;
-	KInputStream file = KInputStream::fromFileName(filename);
+	KInputStream file;
+	file.openFileName(filename);
+	
 	KPacFileReader reader = KPacFileReader::fromStream(file);
 	if (reader.isOpen()) {
 		archive = new CPacFile(reader);
@@ -389,21 +392,22 @@ public:
 	}
 	KInputStream getInputStream(const std::string &filename, bool should_exists) {
 		if (filename.empty()) {
-			K__ERROR("Empry filename");
+			K__ERROR("Empty filename");
 			return KInputStream();
 		}
 
 		// 絶対パスで指定されている場合は普通のファイルとして開く
 		if (!K::pathIsRelative(filename)) {
-			KInputStream file = KInputStream::fromFileName(filename);
+			KInputStream file;
+			file.openFileName(filename);
 			return file;
 		}
 
 		if (m_Archives.empty()) {
 			// ローダーが一つも設定されていない。
 			// 一番基本的な方法で開く
-			KInputStream file = KInputStream::fromFileName(filename);
-			if (file.isOpen()) {
+			KInputStream file;
+			if (file.openFileName(filename)) {
 				return file;
 			}
 		} else {

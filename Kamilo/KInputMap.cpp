@@ -78,6 +78,9 @@ public:
 	virtual KKeyboard::Modifiers get_modifiers() const override {
 		return m_Modifiers;
 	}
+	virtual const char * get_key_name() const override {
+		return KKeyboard::getKeyName(m_Key);
+	}
 
 	// IKeyElm
 	virtual bool isConflictWith(const IKeyElm *k) const override {
@@ -172,15 +175,25 @@ class CJoyAxisKeyElm: public IKeyElm {
 	// このボタンに割り当てられたジョイスティック軸。
 	// 割り当てなしの場合は KJoyAxis_NONE
 	KJoystick::Axis m_Axis;
+
+	// このクラスは正負どちらかの入力を使う。
+	// 軸入力は [-1 .. 1] のうち、
+	// 負の入力 [-1..0] に反応するなら -1 を指定する
+	// 正の入力 [0..1] に反応するなら 1 を指定する
+	// 仕様上、[-1..1] 全体には反応しない。かならずどちらか一方である
 	int m_HalfRange;
+
+	float m_Threshold;
 public:
 	CJoyAxisKeyElm() {
 		m_Axis = KJoystick::AXIS_NONE;
 		m_HalfRange = 0;
+		m_Threshold = 0;
 	}
-	CJoyAxisKeyElm(KJoystick::Axis axis, int halfrange) {
+	CJoyAxisKeyElm(KJoystick::Axis axis, int halfrange, float threshold) {
 		m_Axis = axis;
 		m_HalfRange = halfrange;
+		m_Threshold = threshold;
 	}
 	// IKeyElm
 	virtual bool isConflictWith(const IKeyElm *k) const override {
@@ -190,11 +203,13 @@ public:
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_JOYSTICK) return false;
 		if (m_Axis == KJoystick::AXIS_NONE) return false;
+
+		// 傾きの絶対値が最も大きい軸の値を得る
 		float axisval = 0.0f;
 		for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
 			if (KJoystick::isConnected(i)) {
-				float val = KJoystick::getAxis(i, m_Axis);
-				if (fabsf(axisval) < fabsf(val)) {
+				float val = KJoystick::getAxis(i, m_Axis, m_Threshold);
+				if (fabsf(val) > fabsf(axisval)) {
 					axisval = val;
 				}
 			}
@@ -785,12 +800,13 @@ public:
 
 	// 仮想ボタンにジョイスティックの軸を割り当てる
 	// @param axis 割り当てる軸 (@K_JOYAXIS_X など)
-	IKeyElm * createJoystickAxis(KJoystick::Axis axis, int halfrange) {
+	// @halfrange  軸入力の正と負のどちらに割り当てるか。-1 か 1 のどちらかを指定する（正負の両方に割り当てることはできない）
+	IKeyElm * createJoystickAxis(KJoystick::Axis axis, int halfrange, float threshold) {
 		if (!KJoystick::isInit()) {
 			K__ERROR("no joystick support");
 			return nullptr;
 		}
-		return new CJoyAxisKeyElm(axis, halfrange);
+		return new CJoyAxisKeyElm(axis, halfrange, threshold);
 	}
 
 	// 仮想ボタンにジョイスティックのハットボタン(POV)を割り当てる
@@ -921,29 +937,30 @@ public:
 	}
 
 	void updateGui() {
-		ImGui::BeginTable("##pages", 2, ImGuiTableFlags_Resizable|ImGuiTableFlags_BordersV|ImGuiTableFlags_SizingFixedFit);
-		for (size_t i=0; i<m_Buttons.size(); i++) {
-			CActionButtonKeyElm *elm = m_Buttons[i];
-			ImVec4 color;
-			if (elm->m_RawCurr != 0) {
-			//	color = KImGui::COLOR_WARNING);
-				color = KImGui::COLOR_DEFAULT();
-			} else {
-				color = KImGui::COLOR_DISABLED();
+		if (ImGui::BeginTable("##pages", 2, ImGuiTableFlags_Resizable|ImGuiTableFlags_BordersV|ImGuiTableFlags_SizingFixedFit)) {
+			for (size_t i=0; i<m_Buttons.size(); i++) {
+				CActionButtonKeyElm *elm = m_Buttons[i];
+				ImVec4 color;
+				if (elm->m_RawCurr != 0) {
+				//	color = KImGui::COLOR_WARNING);
+					color = KImGui::COLOR_DEFAULT();
+				} else {
+					color = KImGui::COLOR_DISABLED();
+				}
+
+				ImGui::BeginGroup();
+				ImGui::TableNextColumn();
+				ImGui::TextColored(color, "%s", elm->m_Name.c_str());
+
+				ImGui::TableNextColumn();
+				ImGui::TextColored(color, "%.2f", elm->m_RawCurr);
+				ImGui::EndGroup();
+
+				if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", typeid(*elm).name()); }
+
 			}
-
-			ImGui::BeginGroup();
-			ImGui::TableNextColumn();
-			ImGui::TextColored(color, "%s", elm->m_Name.c_str());
-
-			ImGui::TableNextColumn();
-			ImGui::TextColored(color, "%.2f", elm->m_RawCurr);
-			ImGui::EndGroup();
-
-			if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", typeid(*elm).name()); }
-
+			ImGui::EndTable();
 		}
-		ImGui::EndTable();
 	}
 
 	// 入力状態を更新する
@@ -1126,10 +1143,272 @@ static void _UpdateButtonGui(CButtonMgrImpl *mgr) {
 }
 
 
+
+#pragma region CNodeController
+
+static float _Reduce(float val, float delta) {
+	if (val > 0) {
+		val = KMath::max(val - delta, 0.0f);
+	}
+	if (val < 0) {
+		val = KMath::min(val + delta, 0.0f);
+	}
+	return val;
+}
+
+#pragma region Decl
+class CNodeController: public KComp {
+public:
+	CNodeController();
+	void setTriggerTimeout(int val);
+	void clearInputs();
+
+	// トリガー入力をリセットする
+	// なお beginReadTrigger/endReadTrigger で読み取りモードにしている場合でも clearTrighgers は関係なく動作する
+	void clearTriggers();
+	void setInputAxisX(int i);
+	void setInputAxisY(int i);
+	void setInputAxisZ(int i);
+	void setInputAxisAnalogX(float value);
+	void setInputAxisAnalogY(float value);
+	void setInputAxisAnalogZ(float value);
+	int getInputAxisX();
+	int getInputAxisY();
+	int getInputAxisZ();
+	float getInputAxisAnalogX();
+	float getInputAxisAnalogY();
+	float getInputAxisAnalogZ();
+	void setInputTrigger(const std::string &button);
+	void setInputBool(const std::string &button, bool pressed);
+	bool getInputBool(const std::string &button);
+
+	/// トリガーボタンの状態を得て、トリガー状態を false に戻す。
+	/// トリガーをリセットしたくない場合は peekInputTrigger を使う。
+	/// また、即座にリセットするのではなく特定の時点までトリガーのリセットを
+	/// 先延ばしにしたい場合は beginReadTrigger() / endReadTrigger() を使う
+	bool getInputTrigger(const std::string &button);
+	
+	/// トリガーの読み取りモードを開始する
+	/// endReadTrigger が呼ばれるまでの間は getInputTrigger を呼んでもトリガー状態が false に戻らない
+	void beginReadTrigger();
+
+	/// トリガーの読み取りモードを終了する。
+	/// beginReadTrigger が呼ばれた後に getInputTrigger されたトリガーをすべて false に戻す
+	void endReadTrigger();
+	void tickInput();
+
+	KNode *m_Node;
+	KInputCallback *m_CB;
+
+private:
+	std::unordered_map<std::string, int> m_Buttons;
+	std::unordered_set<std::string> m_Peeked;
+	float m_AxisX;
+	float m_AxisY;
+	float m_AxisZ;
+	float m_AxisReduce;
+	int m_TriggerTimeout;
+	int m_ReadTrigger;
+};
+#pragma endregion // Decl
+
+
+#pragma region Impl
+CNodeController::CNodeController() {
+	m_AxisX = 0;
+	m_AxisY = 0;
+	m_AxisZ = 0;
+	m_AxisReduce = 0.2f; // 1フレーム当たりの軸入力の消失値（正の値を指定）
+	m_Peeked.clear();
+	m_Buttons.clear();
+	m_TriggerTimeout = 10;
+	m_ReadTrigger = 0;
+	m_Node = nullptr;
+	m_CB = nullptr;
+}
+void CNodeController::setTriggerTimeout(int val) {
+	m_TriggerTimeout = val;
+}
+void CNodeController::clearInputs() {
+	m_AxisX = 0;
+	m_AxisY = 0;
+	m_AxisZ = 0;
+	m_Buttons.clear();
+	m_Peeked.clear();
+}
+
+// トリガー入力をリセットする
+// なお beginReadTrigger/endReadTrigger で読み取りモードにしている場合でも clearTrighgers は関係なく動作する
+void CNodeController::clearTriggers() {
+	for (auto it=m_Buttons.begin(); it!=m_Buttons.end(); /*++it*/) {
+		if (it->second >= 0) {
+			it = m_Buttons.erase(it);
+		} else {
+			it++;
+		}
+	}
+	m_Peeked.clear();
+}
+void CNodeController::setInputAxisX(int value) {
+	setInputAxisAnalogX((float)value);
+}
+void CNodeController::setInputAxisY(int value) {
+	setInputAxisAnalogY((float)value);
+}
+void CNodeController::setInputAxisZ(int value) {
+	setInputAxisAnalogZ((float)value);
+}
+void CNodeController::setInputAxisAnalogX(float value) {
+	K__ASSERT(fabsf(value) <= 1);
+	m_AxisX = value;
+}
+void CNodeController::setInputAxisAnalogY(float value) {
+	K__ASSERT(fabsf(value) <= 1);
+	m_AxisY = value;
+}
+void CNodeController::setInputAxisAnalogZ(float value) {
+	K__ASSERT(fabsf(value) <= 1);
+	m_AxisZ = value;
+}
+int CNodeController::getInputAxisX() {
+	float val = getInputAxisAnalogX();
+	return (int)KMath::signf(val); // returns -1, 0, 1
+}
+int CNodeController::getInputAxisY() {
+	float val = getInputAxisAnalogY();
+	return (int)KMath::signf(val); // returns -1, 0, 1
+}
+int CNodeController::getInputAxisZ() {
+	float val = getInputAxisAnalogZ();
+	return (int)KMath::signf(val); // returns -1, 0, 1
+}
+float CNodeController::getInputAxisAnalogX() {
+	float result = KMath::clampf(m_AxisX, -1.0f, 1.0f);
+	if (m_CB) {
+		m_CB->on_input_axisX(m_Node, &result);
+	}
+	return result;
+}
+float CNodeController::getInputAxisAnalogY() {
+	float result = KMath::clampf(m_AxisY, -1.0f, 1.0f);
+	if (m_CB) {
+		m_CB->on_input_axisY(m_Node, &result);
+	}
+	return result;
+}
+float CNodeController::getInputAxisAnalogZ() {
+	float result = KMath::clampf(m_AxisZ, -1.0f, 1.0f);
+	if (m_CB) {
+		m_CB->on_input_axisZ(m_Node, &result);
+	}
+	return result;
+}
+
+void CNodeController::setInputTrigger(const std::string &button) {
+	if (button.empty()) return;
+	m_Buttons[button] = m_TriggerTimeout;
+}
+void CNodeController::setInputBool(const std::string &button, bool pressed) {
+	if (button.empty()) return;
+	if (pressed) {
+		m_Buttons[button] = -1;
+	} else {
+		m_Buttons.erase(button);
+	}
+}
+bool CNodeController::getInputBool(const std::string &button) {
+	if (button.empty()) return false;
+	return m_Buttons.find(button) != m_Buttons.end();
+}
+
+/// トリガーボタンの状態を得て、トリガー状態を false に戻す。
+/// トリガーをリセットしたくない場合は peekInputTrigger を使う。
+/// また、即座にリセットするのではなく特定の時点までトリガーのリセットを
+/// 先延ばしにしたい場合は beginReadTrigger() / endReadTrigger() を使う
+bool CNodeController::getInputTrigger(const std::string &button) {
+	if (button.empty()) return false;
+
+	float result = 0;
+
+	auto it = m_Buttons.find(button);
+	if (it != m_Buttons.end()) {
+		if (m_ReadTrigger > 0) {
+			// PEEKモード中。
+			// トリガーを false に戻さず、参照されたことだけを記録しておく
+			m_Peeked.insert(button);
+		} else {
+			// トリガー状態を false に戻す
+			m_Buttons.erase(it);
+		}
+		result = 1;
+	}
+
+	if (m_CB) {
+		m_CB->on_input_button(m_Node, button, &result);
+	}
+
+	return result != 0;
+}
+	
+/// トリガーの読み取りモードを開始する
+/// endReadTrigger が呼ばれるまでの間は getInputTrigger を呼んでもトリガー状態が false に戻らない
+void CNodeController::beginReadTrigger() {
+	m_ReadTrigger++;
+}
+
+/// トリガーの読み取りモードを終了する。
+/// beginReadTrigger が呼ばれた後に getInputTrigger されたトリガーをすべて false に戻す
+void CNodeController::endReadTrigger() { 
+	m_ReadTrigger--;
+	if (m_ReadTrigger == 0) {
+		for (auto it=m_Peeked.begin(); it!=m_Peeked.end(); ++it) {
+			const std::string &btn = *it;
+			m_Buttons.erase(btn);
+		}
+		m_Peeked.clear();
+	}
+}
+void CNodeController::tickInput() {
+	// 入力状態を徐々に消失させる
+	m_AxisX = _Reduce(m_AxisX, m_AxisReduce);
+	m_AxisY = _Reduce(m_AxisY, m_AxisReduce);
+	m_AxisZ = _Reduce(m_AxisZ, m_AxisReduce);
+
+	// トリガー入力のタイムアウトを処理する
+	for (auto it=m_Buttons.begin(); it!=m_Buttons.end(); /*EMPTY*/) {
+		if (it->second > 0) {
+			it->second--;
+			it++;
+		} else if (it->second == 0) {
+			it = m_Buttons.erase(it);
+		} else {
+			it++; // タイムアウトが負の値の場合なら何もしない
+		}
+	}
+
+	// 入力への介入
+	if (m_CB) {
+		m_CB->on_input_tick(m_Node);
+	}
+}
+#pragma endregion // Impl
+
+
+#pragma endregion // CNodeController
+
+
+
+
+
+
+
+
 class CInputMap: public KManager, public KInspectorCallback {
 	CButtonMgrImpl *m_GameButtons; // ゲーム内入力用のボタンマネージャ
 	CButtonMgrImpl *m_AppButtons; // アプリ操作用のボタンマネージャ
 public:
+	KCompNodes<CNodeController> m_Nodes;
+
 	CInputMap() {
 		m_GameButtons = new CButtonMgrImpl();
 		m_AppButtons = new CButtonMgrImpl();
@@ -1137,8 +1416,8 @@ public:
 		KEngine::addInspectorCallback(this, u8"入力"); // KInspectorCallback
 	}
 	virtual ~CInputMap() {
-		K_Drop(m_GameButtons);
-		K_Drop(m_AppButtons);
+		K__DROP(m_GameButtons);
+		K__DROP(m_AppButtons);
 	}
 	virtual void onInspectorGui() override { // KInspectorCallback
 		ImGui::Text("App buttons");
@@ -1161,6 +1440,12 @@ public:
 		m_GameButtons->updateGui();
 		ImGui::Unindent();
 		KImGui::VSpace();
+	}
+	virtual bool on_manager_isattached(KNode *node) override {
+		return m_Nodes.contains(node);
+	}
+	virtual void on_manager_detach(KNode *node) override {
+		m_Nodes.detach(node);
 	}
 	virtual void on_manager_appframe() override {
 		{
@@ -1197,6 +1482,15 @@ public:
 	virtual void on_manager_frame() override {
 		m_GameButtons->newFrame();
 		m_GameButtons->poll();
+
+		for (auto it=m_Nodes.begin(); it!=m_Nodes.end(); ++it) {
+			CNodeController *co = it->second;
+			co->tickInput();
+		}
+	}
+	virtual void on_manager_nodeinspector(KNode *node) override {
+	//	CNodeController *comp = m_Nodes.get(node);
+	//	comp->_Inspector();
 	}
 	void setPollFlags(KPollFlags flags) {
 		m_AppButtons->setPollFlags(flags);
@@ -1237,12 +1531,12 @@ public:
 	int isConflict(const std::string &button1, const std::string &button2) const {
 		return m_GameButtons->isConflict(button1, button2);
 	}
-	void unbindByTag(const std::string &button, int tag) {
+	void unbindByTag(const std::string &button, const std::string &tag) {
 		CActionButtonKeyElm *btn = m_GameButtons->findButtonItem(button);
 		if (btn) {
 			for (int i=0; i<btn->get_key_count(); i++) {
 				IKeyElm *key = btn->get_key(i);
-				if (key->getTag() == tag) {
+				if (key->hasTag(tag)) {
 					btn->del_key(i);
 					return;
 				}
@@ -1256,7 +1550,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, int tag) {
+	void bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createKeyboardKey(key, mods);
 		if (elm) {
 			elm->setTag(tag);
@@ -1264,7 +1558,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindJoystickKey(const std::string &button, KJoystick::Button joybtn, int tag) {
+	void bindJoystickKey(const std::string &button, KJoystick::Button joybtn, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createJoystickKey(joybtn);
 		if (elm) {
 			elm->setTag(tag);
@@ -1272,15 +1566,15 @@ public:
 			elm->drop();
 		}
 	}
-	void bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, int tag) {
-		IKeyElm *elm = m_GameButtons->createJoystickAxis(axis, halfrange);
+	void bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, const std::string &tag, float threshold) {
+		IKeyElm *elm = m_GameButtons->createJoystickAxis(axis, halfrange, threshold);
 		if (elm) {
 			elm->setTag(tag);
 			m_GameButtons->bindKey(button, elm);
 			elm->drop();
 		}
 	}
-	void bindJoystickPov(const std::string &button, int xsign, int ysign, int tag) {
+	void bindJoystickPov(const std::string &button, int xsign, int ysign, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createJoystickPov(xsign, ysign);
 		if (elm) {
 			elm->setTag(tag);
@@ -1288,7 +1582,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindMouseKey(const std::string &button, KMouse::Button mouse_btn, int tag) {
+	void bindMouseKey(const std::string &button, KMouse::Button mouse_btn, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createMouseKey(mouse_btn);
 		if (elm) {
 			elm->setTag(tag);
@@ -1296,7 +1590,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindKeySequence(const std::string &button, const char *keys[], int tag) {
+	void bindKeySequence(const std::string &button, const char *keys[], const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createCommand(keys);
 		if (elm) {
 			elm->setTag(tag);
@@ -1304,13 +1598,13 @@ public:
 			elm->drop();
 		}
 	}
-	IKeyboardKeyElm * findKeyboardByTag(const std::string &button, int tag) {
+	IKeyboardKeyElm * findKeyboardByTag(const std::string &button, const std::string &tag) {
 		CActionButtonKeyElm *btn = m_GameButtons->findButtonItem(button);
 		if (btn == nullptr) return nullptr;
 
 		for (int i=0; i<btn->get_key_count(); i++) {
 			IKeyElm *key = btn->get_key(i);
-			if (key->getTag() == tag) {
+			if (key->hasTag(tag)) {
 				IKeyboardKeyElm *kbkey = dynamic_cast<IKeyboardKeyElm*>(key);
 				if (kbkey) {
 					return kbkey;
@@ -1319,13 +1613,13 @@ public:
 		}
 		return nullptr;
 	}
-	IJoystickKeyElm * findJoystickByTag(const std::string &button, int tag) {
+	IJoystickKeyElm * findJoystickByTag(const std::string &button, const std::string &tag) {
 		CActionButtonKeyElm *btn = m_GameButtons->findButtonItem(button);
 		if (btn == nullptr) return nullptr;
 
 		for (int i=0; i<btn->get_key_count(); i++) {
 			IKeyElm *key = btn->get_key(i);
-			if (key->getTag() == tag) {
+			if (key->hasTag(tag)) {
 				IJoystickKeyElm *jskey = dynamic_cast<IJoystickKeyElm*>(key);
 				if (jskey) {
 					return jskey;
@@ -1455,31 +1749,35 @@ void KInputMap::bindAppKey(const std::string &button, KKeyboard::Key key, KKeybo
 /// @note tag に適当な整数値を指定した場合、後でその値を検索キーとして特定のキーバインドを探すことができる。
 /// /
 /// @see unbindByTag, findKeyboardByTag, findJoystickByTag
-void KInputMap::bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, int tag) {
+void KInputMap::bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindKeyboardKey(button, key, mods, tag);
 }
-void KInputMap::bindJoystickKey(const std::string &button, KJoystick::Button joybtn, int tag) {
+void KInputMap::bindJoystickKey(const std::string &button, KJoystick::Button joybtn, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindJoystickKey(button, joybtn, tag);
 }
-void KInputMap::bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, int tag) {
+
+/// addButton で登録した仮想ボタンに対してジョイスティックの軸をバインドする
+/// ※軸の負方向または正方向のどちらかにしか割り当てられない。正負のどちらに割り当てるかを halfrange に -1 または 1 で指定する
+void KInputMap::bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, const std::string &tag, float threshold) {
 	K__ASSERT(g_InputMap);
-	g_InputMap->bindJoystickAxis(button, axis, halfrange, tag);
+	g_InputMap->bindJoystickAxis(button, axis, halfrange, tag, threshold);
 }
-void KInputMap::bindJoystickPov(const std::string &button, int xsign, int ysign, int tag) {
+
+void KInputMap::bindJoystickPov(const std::string &button, int xsign, int ysign, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindJoystickPov(button, xsign, ysign, tag);
 }
-void KInputMap::bindMouseKey(const std::string &button, KMouse::Button mousebtn, int tag) {
+void KInputMap::bindMouseKey(const std::string &button, KMouse::Button mousebtn, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindMouseKey(button, mousebtn, tag);
 }
-void KInputMap::bindKeySequence(const std::string &button, const char *keys[], int tag) {
+void KInputMap::bindKeySequence(const std::string &button, const char *keys[], const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindKeySequence(button, keys, tag);
 }
-void KInputMap::unbindByTag(const std::string &button, int tag) {
+void KInputMap::unbindByTag(const std::string &button, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->unbindByTag(button, tag);
 }
@@ -1491,11 +1789,11 @@ void KInputMap::resetAllButtonStates() {
 	K__ASSERT(g_InputMap);
 	g_InputMap->resetAllButtonStates();
 }
-IKeyboardKeyElm * KInputMap::findKeyboardByTag(const std::string &button, int tag) {
+IKeyboardKeyElm * KInputMap::findKeyboardByTag(const std::string &button, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->findKeyboardByTag(button, tag);
 }
-IJoystickKeyElm * KInputMap::findJoystickByTag(const std::string &button, int tag) {
+IJoystickKeyElm * KInputMap::findJoystickByTag(const std::string &button, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->findJoystickByTag(button, tag);
 }
@@ -1519,6 +1817,152 @@ void KInputMap::setPollFlags(KPollFlags flags) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->setPollFlags(flags);
 }
+
+
+
+
+
+
+
+
+#pragma region Per Node Input
+void KInputMap::attach(KNode *node) {
+	K__ASSERT(g_InputMap);
+	if (node && !isAttached(node)) {
+		CNodeController *co = new CNodeController();
+		co->m_Node = node;
+		g_InputMap->m_Nodes.attach(node, co);
+		co->drop();
+	}
+}
+bool KInputMap::isAttached(KNode *node) {
+	K__ASSERT(g_InputMap);
+	return g_InputMap->m_Nodes.get(node) != nullptr;
+}
+
+void KInputMap::setNodeInputCallback(KNode *node, KInputCallback *cb) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) {
+		co->m_CB = cb;
+	}
+}
+void KInputMap::clearTriggers(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->clearTriggers();
+}
+void KInputMap::clearInputs(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->clearInputs();
+}
+void KInputMap::setTriggerTimeout(KNode *node, int value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setTriggerTimeout(value);
+}
+void KInputMap::setInputAxisX(KNode *node, int value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisX(value);
+}
+void KInputMap::setInputAxisY(KNode *node, int value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisY(value);
+}
+void KInputMap::setInputAxisZ(KNode *node, int value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisZ(value);
+}
+void KInputMap::setInputAxisAnalogX(KNode *node, float value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisAnalogX(value);
+}
+void KInputMap::setInputAxisAnalogY(KNode *node, float value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisAnalogY(value);
+}
+void KInputMap::setInputAxisAnalogZ(KNode *node, float value) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputAxisAnalogZ(value);
+}
+int KInputMap::getInputAxisX(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisX() : 0;
+}
+int KInputMap::getInputAxisY(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisY() : 0;
+}
+int KInputMap::getInputAxisZ(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisZ() : 0;
+}
+float KInputMap::getInputAxisAnalogX(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisAnalogX() : 0.0f;
+}
+float KInputMap::getInputAxisAnalogY(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisAnalogY() : 0.0f;
+}
+float KInputMap::getInputAxisAnalogZ(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	return co ? co->getInputAxisAnalogZ() : 0.0f;
+}
+void KInputMap::setInputTrigger(KNode *node, const std::string &node_button) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputTrigger(node_button);
+}
+void KInputMap::setInputBool(KNode *node, const std::string &node_button, bool pressed) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->setInputBool(node_button, pressed);
+}
+bool KInputMap::getInputBool(KNode *node, const std::string &node_button) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co && co->getInputBool(node_button)) {
+		return true;
+	}
+	return false;
+}
+bool KInputMap::getInputTrigger(KNode *node, const std::string &node_button) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co && co->getInputTrigger(node_button)) {
+		return true;
+	}
+	return false;
+}
+void KInputMap::beginReadTrigger(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->beginReadTrigger();
+}
+void KInputMap::endReadTrigger(KNode *node) {
+	K__ASSERT(g_InputMap);
+	auto co = g_InputMap->m_Nodes.get(node);
+	if (co) co->endReadTrigger();
+}
+#pragma endregion // Per Node Input
+
+
+
+
 #pragma endregion // KInputMapAct
 
 } // namespace

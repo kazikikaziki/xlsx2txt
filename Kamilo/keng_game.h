@@ -8,7 +8,6 @@
 #include <typeinfo>
 #include <unordered_map>
 #include <unordered_set>
-#include "keng_ext.h"
 #include "KRef.h"
 #include "KNode.h"
 #include "KInspector.h"

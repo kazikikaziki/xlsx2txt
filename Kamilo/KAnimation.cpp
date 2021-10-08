@@ -38,8 +38,8 @@ public:
 			co->setLayerLabel(i, key->layers[i].label);
 
 			KSpriteAuto sprite = co->getLayerSprite(i);
-			if (sprite != nullptr && sprite->mDefaultBlend != KBlend_INVALID) {
-				co->getLayerMaterialAnimatable(i)->blend = sprite->mDefaultBlend;
+			if (sprite != nullptr && sprite->m_DefaultBlend != KBlend_INVALID) {
+				co->getLayerMaterialAnimatable(i)->blend = sprite->m_DefaultBlend;
 			}
 			#if 0
 			// "@blend=add @blend=screen
@@ -64,6 +64,7 @@ public:
 
 	CPlayback() {
 		m_CB = nullptr;
+		m_UserData = 0;
 		m_Clip = nullptr;
 		m_Flags = 0;
 		m_Frame = 0.0f;
@@ -79,6 +80,7 @@ public:
 	int m_SleepTime; // 指定された時間だけ再生を停止する。-1 で無期限停止
 	KClipRes::Flags m_Flags;
 	KPlaybackCallback *m_CB;
+	uintptr_t m_UserData;
 	KNode *m_Target;
 	std::string m_PostNextClip;
 	int m_PostNextPage;
@@ -114,6 +116,7 @@ public:
 		if (m_CB) {
 			KPlaybackSignalArgs args;
 			args.node = m_Target;
+			args.userdata = m_UserData;
 			m_CB->on_playback_repeat(&args);
 		}
 	}
@@ -123,6 +126,7 @@ public:
 			KPlaybackSignalArgs args;
 			args.node = m_Target;
 			args.page = page;
+			args.userdata = m_UserData;
 			m_CB->on_playback_tick(&args);
 		}
 	}
@@ -133,6 +137,7 @@ public:
 			args.node = m_Target;
 			args.clip = m_Clip;
 			args.page = page;
+			args.userdata = m_UserData;
 			m_CB->on_playback_enter_page(&args);
 		}
 	}
@@ -142,6 +147,7 @@ public:
 			args.node = m_Target;
 			args.clip = m_Clip;
 			args.page = new_page;
+			args.userdata = m_UserData;
 			m_CB->on_playback_enter_page(&args);
 		}
 	}
@@ -152,6 +158,7 @@ public:
 				args.node = m_Target;
 				args.clip = m_Clip;
 				args.page = old_page;
+				args.userdata = m_UserData;
 				m_CB->on_playback_exit_page(&args);
 			}
 		}
@@ -160,6 +167,7 @@ public:
 		if (m_CB) {
 			KPlaybackSignalArgs args;
 			args.node = m_Target;
+			args.userdata = m_UserData;
 			m_CB->on_playback_exit_clip(&args);
 		}
 	}
@@ -607,6 +615,7 @@ bool KAnimation::setMainClip(KClipRes *clip, bool keep) {
 		if (m_MainPlayback->m_CB) {
 			KPlaybackSignalArgs args;
 			args.node = getNode();
+			args.userdata = m_MainPlayback->m_UserData;
 			m_MainPlayback->m_CB->on_playback_enter_clip(&args);
 		}
 
@@ -636,8 +645,9 @@ bool KAnimation::setMainClip(KClipRes *clip, bool keep) {
 	}
 	return true;
 }
-void KAnimation::setMainClipCallback(KPlaybackCallback *cb) {
+void KAnimation::setMainClipCallback(KPlaybackCallback *cb, uintptr_t userdata) {
 	m_MainPlayback->m_CB = cb;
+	m_MainPlayback->m_UserData = userdata;
 }
 void KAnimation::tickTracks() {
 	if (m_MainPlayback->m_Clip) {

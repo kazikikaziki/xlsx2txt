@@ -531,12 +531,14 @@ bool KFont::loadFromStream(KInputStream &input, int ttc_index) {
 	return true;
 }
 bool KFont::loadFromFileName(const std::string &filename, int ttc_index) {
-	KInputStream input = KInputStream::fromFileName(filename);
-	return loadFromStream(input, ttc_index);
+	KInputStream file;
+	file.openFileName(filename);
+	return loadFromStream(file, ttc_index);
 }
 bool KFont::loadFromMemory(const void *data, int size, int ttc_index) {
-	KInputStream input = KInputStream::fromMemory(data, size);
-	return loadFromStream(input, ttc_index);
+	KInputStream file;
+	file.openMemory(data, size);
+	return loadFromStream(file, ttc_index);
 }
 
 
@@ -896,8 +898,8 @@ void Test_font_printInfo(const std::string &output_dir, const std::string &filen
 	std::string msg_u8;
 	std::string bin;
 	{
-		KInputStream file = KInputStream::fromFileName(filename);
-		if (file.isOpen()) {
+		KInputStream file;
+		if (file.openFileName(filename)) {
 			bin = file.readBin();
 		}
 	}
@@ -918,8 +920,9 @@ void Test_font_printInfo(const std::string &output_dir, const std::string &filen
 		std::string outname = K::pathJoin(output_dir, K::pathGetLast(filename));
 		outname = K::pathRenameExtension(outname, ".txt");
 
-		KOutputStream output = KOutputStream::fromFileName(outname);
-		output.write(msg_u8.data(), msg_u8.size());
+		KOutputStream file;
+		file.openFileName(outname);
+		file.write(msg_u8.data(), msg_u8.size());
 	}
 }
 void Test_font_ex(const std::string &font_filename, float fontsize, const std::string &output_image_filename) {
@@ -1001,8 +1004,9 @@ void Test_font_ex(const std::string &font_filename, float fontsize, const std::s
 		}
 
 		std::string png = imgText.saveToMemory();
-		KOutputStream output = KOutputStream::fromFileName(output_image_filename);
-		output.write(png.data(), png.size());
+		KOutputStream file;
+		file.openFileName(output_image_filename);
+		file.write(png.data(), png.size());
 	}
 }
 void Test_font(const std::string &dir) {
@@ -1052,7 +1056,8 @@ void KPlatformFonts::scan() {
 	std::vector<std::string> files = K::fileGetListInDir(font_dir);
 	for (auto it=files.begin(); it!=files.end(); ++it) {
 		std::string filename = K::pathJoin(font_dir, *it);
-		KInputStream file = KInputStream::fromFileName(filename);
+		KInputStream file;
+		file.openFileName(filename);
 		std::string bin = file.readBin();
 		int numfonts = KFont::getFontCollectionCount(bin.data(), bin.size());
 		for (int i=0; i<numfonts; i++) {
@@ -1116,8 +1121,9 @@ void Test_fontscan(const std::string &output_dir) {
 			);
 		}
 	}
-	KOutputStream output = KOutputStream::fromFileName(K::pathJoin(output_dir, "Test_fontscan.txt"));
-	output.write(msg_u8.data(), msg_u8.size());
+	KOutputStream file;
+	file.openFileName(K::pathJoin(output_dir, "Test_fontscan.txt"));
+	file.write(msg_u8.data(), msg_u8.size());
 }
 } // Test
 

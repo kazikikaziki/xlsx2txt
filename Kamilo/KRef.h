@@ -7,8 +7,11 @@
 #include <unordered_set>
 #include <vector>
 
-#define K_Grab(a)  ((a) ? ((a)->grab(),     nullptr) : nullptr) // call KRef::grab()
-#define K_Drop(a)  ((a) ? ((a)->drop(), (a)=nullptr) : nullptr) // call KRef::drop()
+#define K_Grab K__GRAB
+#define K_Drop K__DROP
+
+#define K__GRAB(a)  ((a) ? ((a)->grab(),     nullptr) : nullptr) // call KRef::grab()
+#define K__DROP(a)  ((a) ? ((a)->drop(), (a)=nullptr) : nullptr) // call KRef::drop()
 
 namespace Kamilo {
 
@@ -144,26 +147,26 @@ public:
 	}
 	KAutoRef(const _KRef *ref) {
 		m_Ref = const_cast<_KRef*>(ref);
-		K_Grab(m_Ref);
+		K__GRAB(m_Ref);
 	}
 	KAutoRef(const KAutoRef<_KRef> &autoref) {
 		m_Ref = const_cast<_KRef*>(autoref.m_Ref);
-		K_Grab(m_Ref);
+		K__GRAB(m_Ref);
 	}
 	~KAutoRef() {
-		K_Drop(m_Ref);
+		K__DROP(m_Ref);
 	}
 	void make() {
-		K_Drop(m_Ref);
+		K__DROP(m_Ref);
 		m_Ref = new _KRef();
 	}
 	_KRef * get() const {
 		return m_Ref;
 	}
 	void set(const _KRef *ref) {
-		K_Drop(m_Ref);
+		K__DROP(m_Ref);
 		m_Ref = const_cast<_KRef*>(ref);
-		K_Grab(m_Ref);
+		K__GRAB(m_Ref);
 	}
 	KAutoRef<_KRef> operator = (_KRef *ref) {
 		set(ref);

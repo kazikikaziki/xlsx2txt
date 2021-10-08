@@ -227,8 +227,9 @@ KXmlElement * KXmlElement::create(const std::string &tag) {
 }
 KXmlElement * KXmlElement::createFromFileName(const std::string &filename) {
 	KXmlElement *elm = nullptr;
-	KInputStream input = KInputStream::fromFileName(filename);
-	elm = createFromStream(input, filename);
+	KInputStream file;
+	file.openFileName(filename);
+	elm = createFromStream(file, filename);
 	return elm;
 }
 KXmlElement * KXmlElement::createFromStream(KInputStream &input, const std::string &filename) {
@@ -385,7 +386,14 @@ int KXmlElement::indexOf(const KXmlElement *child) const {
 }
 const char * KXmlElement::getAttrString(const char *name, const char *def) const {
 	int i = findAttrByName(name);
-	return i>=0 ? getAttrValue(i) : def;
+	const char *s = nullptr;
+	if (i >= 0) {
+		s = getAttrValue(i);
+	}
+	if (s == nullptr) {
+		s = def;
+	}
+	return s;
 }
 float KXmlElement::getAttrFloat(const char *name, float def) const {
 	const char *s = getAttrString(name);

@@ -415,13 +415,13 @@ private:
 		registerDrawables(node, camera_layer, m_Tmp2, true, node_layer);
 
 		// ソートする
-		switch (node->m_LocalRenderOrder) {
-		case KNode::LRO_DEFAULT:
+		switch (node->getLocalRenderOrder()) {
+		case KLocalRenderOrder_DEFAULT:
 			// カメラに設定された順番で描画する
 			sortByRenderingOrder(KCamera::of(camera)->getRenderingOrder(), m_Tmp2);
 			break;
 
-		case KNode::LRO_TREE:
+		case KLocalRenderOrder_TREE:
 			// ツリーの巡回順で描画する
 			// 親→子の順になる
 			// 子→親にしたい場合は KNode::getRenderAfterChildren を設定する
