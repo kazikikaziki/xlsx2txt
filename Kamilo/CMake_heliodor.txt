@@ -1,0 +1,201 @@
+﻿# coding: utf8
+# よくつかう設定をマクロとして定義
+
+
+##############################################################################
+# マクロを定義
+# keng_cmake_set_option(変数 デフォルト値 型 ツールヒント)
+##############################################################################
+macro(heliodor_set_option var default type docstring)
+    if(NOT DEFINED ${var})
+        set(${var} ${default})
+    endif()
+    set(${var} ${${var}} CACHE ${type} ${docstring} FORCE)
+endmacro()
+
+
+
+
+##############################################################################
+# コンフィグレーション
+# 項目を Debug と Release のみにして RelWithDebInfo と MinSizeRel を削除する
+##############################################################################
+macro(heliodor_configurations)
+	set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "limited configs" FORCE)
+endmacro()
+
+
+
+
+##############################################################################
+# 定番のマクロを定義する
+##############################################################################
+macro(heliodor_definitions)
+	if (MSVC)
+		target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_WIN32_DISABLE_GAMEPAD) # imgui に XInput をリンクさせないようにする ==> imgui/imgui_impl_win32.cpp
+		target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+		target_compile_definitions(${PROJECT_NAME} PRIVATE NOMINMAX) # avoiding min and max macro in windows library
+	endif()
+endmacro()
+
+
+
+
+##############################################################################
+# Win32ライブラリをリンク
+##############################################################################
+macro(heliodor_link_win32)
+	if (MSVC)
+	#	target_link_libraries(${PROJECT_NAME} "winmm.lib")    # mmsystem.h
+	#	target_link_libraries(${PROJECT_NAME} "imm32.lib")    # imm.h (by ImGui)
+	#	target_link_libraries(${PROJECT_NAME} "shlwapi.lib")  # shlwapi.h
+	#	target_link_libraries(${PROJECT_NAME} "comctl32.lib") # commctrl.h
+	#	target_link_libraries(${PROJECT_NAME} "dbghelp.lib")  # dbghelp.h
+	#	target_link_libraries(${PROJECT_NAME} "user32.lib")
+	#	target_link_libraries(${PROJECT_NAME} "legacy_stdio_definitions.lib") # For compatibility with vsnprintf at dxerr.dll
+	endif()
+endmacro()
+
+
+
+
+##############################################################################
+# DirectX9ライブラリをリンク
+##############################################################################
+macro(heliodor_link_d3d9)
+	if (MSVC)
+	#	target_link_libraries(${PROJECT_NAME} "d3d9.lib")
+	#	target_link_libraries(${PROJECT_NAME} "d3dx9.lib")
+	#	target_link_libraries(${PROJECT_NAME} "dsound.lib")
+	#	target_link_libraries(${PROJECT_NAME} "dxguid.lib")
+	#	target_link_libraries(${PROJECT_NAME} "dxerr9.lib") # DirextX SDK 2004 Oct
+		# http://springhead.info/wiki/index.php
+		# Visual Studio 2012でXINPUTにまつわるエラーが出る場合
+		#
+		# Window7 以前のOSでの実行で、
+		# 「コンピュータに XINPUT1_4.dll がないため、プログラムを開始できません。…」
+		# というエラーが発生する場合は、ビルドのプロパティで、
+		#   [リンカー]-[入力]-[追加の依存ファイル] に XINPUT9_1_0.LIB を
+		#   [リンカー]-[入力]-[特定の既定のライブラリの無視] に XINPUT.LIB を
+		# 指定してください。
+		# Windows8 以降のOSでは発生しないと思いますが、確認はしていません。
+	#	target_link_libraries(${PROJECT_NAME} "xinput9_1_0.lib")
+	endif()
+endmacro()
+
+
+
+
+##############################################################################
+# プロジェクトごとの出力EXEが同一フォルダに作成されるようにする
+##############################################################################
+macro(helidoor_exe_output exe_name)
+	if (MSVC)
+		# output directory
+		#
+		# RUNTIME_OUTPUT_DIRECTORY を指定しても、 DEBUG と RELEASE が同じ場所になったりしない。ドキュメントにも
+		# https://cmake.org/cmake/help/v3.3/prop_tgt/RUNTIME_OUTPUT_DIRECTORY.html
+		# > Multi-configuration generators (VS, Xcode) append a per-configuration subdirectory to the specified directory.
+		# と書いてある!! ので、コンフィグに関係なく同じ場所にしたい場合は明示的に
+		# RUNTIME_OUTPUT_DIRECTORY_DEBUG, RUNTIME_OUTPUT_DIRECTORY_RELEASE それぞれに
+		# 同一のパスを設定しないといけない
+		set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${CMAKE_SOURCE_DIR}")
+		set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}")
+		# output file name
+		# 同一場所に生成しても衝突しないように exe の名前を変えてお
+		set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME_DEBUG   "${exe_name}_d")
+		set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME_RELEASE "${exe_name}"  )
+	endif()
+endmacro()
+
+
+
+##############################################################################
+# リンカーオプションを設定する
+##############################################################################
+macro(helidoor_link_opts)
+	if (MSVC)
+		# サブシステム（構成プロパティ→リンカー→システム）
+		#   WINDOWS システムにする。WinMain がエントリポイントになる
+		target_link_options(${PROJECT_NAME} PRIVATE "/SUBSYSTEM:WINDOWS")
+
+		# 安全な例外ハンドラーを含むイメージ（構成プロパティ→リンカー→詳細設定）
+		#   無効にする。有効になっているとエディットコンテニューができない
+		target_link_options(${PROJECT_NAME} PRIVATE "/SAFESEH:NO")
+	endif()
+endmacro()
+
+
+
+
+##############################################################################
+# 使用するランタイムライブラリをスタティックライブラリにする
+##############################################################################
+macro(heliodor_static_runtime)
+	if (MSVC)
+		# MT, MTd ランタイムライブラリ
+		# FAcs    アセンブリの出力
+		# MP      複数プロセッサによるコンパイル
+		# ZI      エディットコンテニュ―可能
+		target_compile_options(${PROJECT_NAME} PRIVATE
+			$<$<CONFIG:Debug>:  /MTd /FAcs /MP /ZI> # Debug
+			$<$<CONFIG:Release>:/MT  /FAcs /MP> # Release
+		)
+		# ちなみに $<CONFG:Debug> とかいうのは CMake のジェネレーター構文を使ったもの。
+		#
+		# $<1: string> は string になる
+		# $<0: string> 空文字列になる
+		#
+		# $<CONFG: value> は Config が value ならば 1 になり、それ以外なら 0 になる
+		#
+		# $<$<CONFIG:Debug>:  /MTd /FAcs /MP /ZI> と書いた場合、
+		#
+		# CONFIG が Debug ならば
+		# 　　$<$<CONFIG:Debug>
+		# →　$<1:  /MTd /FAcs /MP /ZI>
+		# →　"/MTd /FAcs /MP /ZI"
+		# になる。
+		# 
+		# CONFIG が Debug 以外ならば
+		# 　　$<$<CONFIG:Debug>
+		# →　$<0:  /MTd /FAcs /MP /ZI>
+		# →　""
+		# になる。
+		#
+		# cmake-generator-expressions
+		# https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html
+		#
+		# What does "$<$<CONFIG:Debug>:Release>" mean in cmake?
+		# https://stackoverflow.com/questions/34490294/what-does-configdebugrelease-mean-in-cmake
+		#
+	endif()
+endmacro()
+
+
+
+
+##############################################################################
+# 実行ファイルプロジェクト用の設定。
+##############################################################################
+macro(heliodor_easy_exe_setup output_name)
+	heliodor_configurations() # Debug Release
+	heliodor_definitions()    # _CRT_SECURE_NO_WARNINGS, NOMINMAX
+	heliodor_static_runtime() # MT, MTd
+	heliodor_link_win32()     # win32 libs
+	heliodor_link_d3d9()      # Direct3D9 libs
+	helidoor_link_opts()
+	helidoor_exe_output(${output_name})
+endmacro()
+
+
+
+
+##############################################################################
+# ライブラリプロジェクト用の共通設定。
+##############################################################################
+macro(heliodor_easy_lib_setup)
+	heliodor_configurations() # Debug Release
+	heliodor_definitions()
+	heliodor_static_runtime() # MT, MTd
+endmacro()
+
