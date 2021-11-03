@@ -22,7 +22,7 @@ typedef int KAudioFlags;
 class KAudioPlayer {
 public:
 	static void install();
-	static void install(KStorage &storage);
+	static void install(KStorage *storage);
 	static void uninstall();
 
 	/// 現在のサウンドグループ数を返す

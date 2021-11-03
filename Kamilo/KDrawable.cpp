@@ -660,7 +660,7 @@ void KDrawable::updateGroupRenderTextureAndMesh() {
 	KTexture *target_tex = KVideo::findTexture(KBank::getTextureBank()->findTextureRaw(m_group_rentex_name, false));
 	if (target_tex && !target_tex->isRenderTarget()) {
 		// レンダーテクスチャではない
-		KLog::printError("'%s' is not a render texture", m_group_rentex_name.c_str());
+		K__ERROR("'%s' is not a render texture", m_group_rentex_name.c_str());
 		return;
 	}
 	if (target_tex == nullptr) {

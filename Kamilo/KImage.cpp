@@ -89,6 +89,20 @@ void KCorePng__write_cb(void *context, void *data, int size) {
 	bin.assign((const char *)data, size);
 }
 
+bool KCorePng::readsize(KInputStream &file, int *w, int *h) {
+	const int SIZE = 24;
+	char buf[SIZE] = {0};
+	int pos = file.tell();
+	bool ret = false;
+	if (file.read(buf, SIZE) == SIZE) {
+		if (readsize(buf, SIZE, w, h)) {
+			ret = true;
+		}
+	}
+	file.seek(pos);
+	return ret;
+}
+
 bool KCorePng::readsize(const void *png_first_24bytes, int size, int *w, int *h) {
 	if (png_first_24bytes == nullptr) return false;
 	if (size < 24) return false;

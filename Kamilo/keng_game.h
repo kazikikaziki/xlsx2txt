@@ -35,6 +35,11 @@ namespace Kamilo {
 class KNode;
 class KEntityFilterCallback;
 class KScreen;
+class KCoreWindow;
+class KCoreKeyboard;
+class KCoreMouse;
+class KCoreJoystick;
+class KStorage;
 
 #pragma region signals
 
@@ -76,7 +81,7 @@ K_DECL_SIGNAL(K_SIG_WINDOW_MOUSE_DOWN);
 // "button": mouse button 0=left, 1=right, 2=middle
 K_DECL_SIGNAL(K_SIG_WINDOW_MOUSE_UP);
 
-// "key"  : KKeyboard::Key (int)
+// "key"  : KKey (int)
 // "shift": with shift key (bool)
 // "ctrl" : with ctrl key(bool)
 // "alt"  : with alt key(bool)
@@ -162,6 +167,22 @@ K_DECL_SIGNAL(K_SIG_HITBOX_EXIT);
 
 
 #pragma endregion // signals
+
+
+class KIniFile: public KRef {
+public:
+	virtual void writeString(const std::string &key, const std::string &val) = 0;
+	virtual void writeInt(const std::string &key, int x) = 0;
+	virtual void writeInt2(const std::string &key, int x, int y) = 0;
+	virtual void writeInt4(const std::string &key, int x, int y, int z, int w) = 0;
+	virtual bool readString(const std::string &key, std::string *p_val) const = 0;
+	virtual bool readInt(const std::string &key, int *x) const = 0;
+	virtual bool readInt2(const std::string &key, int *x, int *y) const = 0;
+	virtual bool readInt4(const std::string &key, int *x, int *y, int *z, int *w) const = 0;
+	virtual void save() = 0;
+};
+
+KIniFile * createIniFile(const std::string &filename);
 
 
 
@@ -279,13 +300,17 @@ struct KEngineDef {
 		resolution_x = 640;
 		resolution_y = 480;
 		callback = nullptr;
+		storage = nullptr;
+		ini_filename = "user.ini";
 	}
 	bool use_inspector;
 	bool use_console;
 	int fps;
 	int resolution_x;
 	int resolution_y;
+	std::string ini_filename;
 	KManager *callback;
+	KStorage *storage;
 };
 
 class KEngine {
@@ -323,6 +348,13 @@ public:
 	static void pause(); ///< ポーズする（更新は停止するが、描画は継続する）
 	static void quit(); ///< ループを終了する
 	static void setFps(int fps, int skip); ///< 更新サイクルなどを指定する
+
+	static KCoreWindow * getWindow();
+	static KCoreKeyboard * getKeyboard();
+	static KCoreMouse * getMouse();
+	static KCoreJoystick * getJoystick();
+	static KIniFile * getIniFile();
+	static KStorage * getStorage();
 
 	enum WindowMode {
 		/// 通常ウィンドウ

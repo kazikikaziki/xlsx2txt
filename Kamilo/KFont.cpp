@@ -1063,9 +1063,9 @@ void KPlatformFonts::scan() {
 		for (int i=0; i<numfonts; i++) {
 			// Wingding などのシンボルテキストはロードできない。
 			// ロードできないとわかっているので、エラーダイアログがいちいち出ないように抑制しておく
-			KLog::muteDialog();
+			KLogger::get()->pushLevel(KLogLv_CRITICAL);
 			KFont font = KFont::createFromMemory(bin.data(), bin.size(), i);
-			KLog::unmuteDialog();
+			KLogger::get()->popLevel();
 
 			INFO info;
 			if (!font.isOpen()) {

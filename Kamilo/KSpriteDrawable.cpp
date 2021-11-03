@@ -60,7 +60,7 @@ int KSpriteDrawable::getModifier() const {
 // 指定されたインデックスのレイヤーが存在することを保証する
 bool KSpriteDrawable::guaranteeLayerIndex(int index) {
 	if (index < 0 || MAX_SPRITE_LAYER_COUNT <= index) {
-		KLog::printError("E_INVALID_SPRITE_LAYER_INDEX: %d", index);
+		K__ERROR("E_INVALID_SPRITE_LAYER_INDEX: %d", index);
 		return false;
 	}
 
@@ -133,7 +133,7 @@ void KSpriteDrawable::setLayerSprite(int index, const KPath &asset_path) {
 	if (asset_path.empty()) {
 		// 無色透明画像とみなす
 	} else if (asset_path.extension().compare(".sprite") != 0) {
-		KLog::printError("E_INVALID_FILEPATH_FOR_SPRITE: \"%s\" (NO FILE EXT .sprite)", asset_path.u8());
+		K__ERROR("E_INVALID_FILEPATH_FOR_SPRITE: \"%s\" (NO FILE EXT .sprite)", asset_path.u8());
 	}
 	if (guaranteeLayerIndex(index)) {
 		m_sprite_layers[index].sprite = asset_path;

@@ -161,7 +161,7 @@ void KTextBox::addChar(wchar_t code) {
 
 void KTextBox::addCharEx(wchar_t code, const Attr &attr) {
 	if (!attr.font.isOpen()) {
-	//	KLog::printWarning(u8"フォントが未設定です");
+	//	K__WARNING(u8"フォントが未設定です");
 		K__ERROR("NO FONT LOADED"); // フォントがロードされていない。何も描画できない
 		return;
 	}
@@ -1652,7 +1652,7 @@ void KTextDrawable::setFont(KFont &font) {
 void KTextDrawable::setFont(const std::string &alias) {
 	KFont font = KBank::getFontBank()->getFont(alias, false);
 	if (!font.isOpen()) {
-		KLog::printError("E_FONT: NO FONT ALIASED '%s", alias.c_str());
+		K__ERROR("E_FONT: NO FONT ALIASED '%s", alias.c_str());
 	}
 	setFont(font);
 }

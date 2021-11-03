@@ -34,12 +34,12 @@ public:
 		KEngine::addInspectorCallback(this, u8"スクリーンショット"); // KInspectorCallback
 
 		// 独自の PtrScr を使う（＝Windows標準の PrtScr を無効化する）
-		KWindow::setAttribute(KWindow::ATTR_KILL_SNAPSHOT, true);
+		KEngine::getWindow()->setAttribute(KWindowAttr_KILL_SNAPSHOT, true);
 	}
 	virtual void on_manager_signal(KSig &sig) override {
 		if (sig.check(K_SIG_WINDOW_KEY_DOWN)) {
 			// ウィンドウイベントは別スレッドから飛んでくる場合があることに注意
-			if (sig.getInt("key") == KKeyboard::KEY_SNAPSHOT) {
+			if (sig.getInt("key") == KKey_SNAPSHOT) {
 				m_DoShot = true;
 			}
 			return;
@@ -113,7 +113,7 @@ public:
 				file.openFileName(filename.u8());
 				file.write(png.data(), png.size());
 
-				KLog::printInfo("Texture image saved %s", filename.getFullPath().u8());
+				K__PRINT("Texture image saved %s", filename.getFullPath().u8());
 				m_LastOutputFileName = filename;
 			}
 		} else {

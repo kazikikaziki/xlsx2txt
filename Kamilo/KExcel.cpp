@@ -7,13 +7,381 @@
 #include "KXml.h"
 
 
+
+#define SHEET_TEST 1
+
+
 namespace Kamilo {
 
 
-#define EXCEL_ALPHABET_NUM 26
-#define EXCEL_COL_LIMIT    (EXCEL_ALPHABET_NUM + EXCEL_ALPHABET_NUM * EXCEL_ALPHABET_NUM) // A～Z + AA～ZZ
-#define EXCEL_ROW_LIMIT    1024
 #define HAS_CHAR(str, chr) (strchr(str, chr) != nullptr)
+
+
+
+#pragma region KExcel
+
+class CXlsxImpl {
+public:
+	static bool loadFromStream(KInputStream &file, const std::string &xlsx_name, std::vector<KDataGrid> &result) {
+		KUnzipper zr(file);
+		return loadFromZipAsXlsx(zr, xlsx_name, result);
+	}
+	static bool loadFromFileName(const std::string &filename, std::vector<KDataGrid> &result) {
+		KInputStream file;
+		if (file.openFileName(filename)) {
+			if (loadFromStream(file, filename, result)) {
+				return true;
+			}
+		}
+		return false;
+	}
+	static bool loadFromMemory(const void *bin, size_t size, const std::string &name, std::vector<KDataGrid> &result) {
+		KInputStream file;
+		if (file.openMemory(bin, size)) {
+			if (loadFromStream(file, name, result)) {
+				return true;
+			}
+		}
+		return false;
+	}
+private:
+	// 文字列 s をエスケープする必要がある？
+	static bool shouldEscapeString(const std::string &_s) {
+		const char *s = _s.c_str();
+		return HAS_CHAR(s, '<') || HAS_CHAR(s, '>') || HAS_CHAR(s, '"') || HAS_CHAR(s, '\'') || HAS_CHAR(s, '\n');
+	}
+
+	// ZIP 内のファイルを探してインデックスを返す
+	static int findZipEntry(KUnzipper &zr, const std::string &name) {
+		int num = zr.getEntryCount();
+		for (int i=0; i<num; i++) {
+			std::string s;
+			zr.getEntryName(i, &s);
+			if (s.compare(name) == 0) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	static KXmlElement * loadXmlFromZip(KUnzipper &zr, const std::string &zip_name, const std::string &entry_name) {
+		if (!zr.isOpen()) {
+			K__ERROR("E_INVALID_ARGUMENT");
+			return nullptr;
+		}
+
+		// XLSX の XML は常に UTF-8 で書いてある。それを信用する
+		int fileid = findZipEntry(zr, entry_name);
+		if (fileid < 0) {
+			K__ERROR("E_FILE: Failed to open file '%s' from archive '%s'", entry_name.c_str(), zip_name.c_str());
+			return nullptr;
+		}
+
+		std::string xml_u8;
+		if (!zr.getEntryData(fileid, "", &xml_u8)) {
+			K__ERROR("E_FILE: Failed to open file '%s' from archive '%s'", entry_name.c_str(), zip_name.c_str());
+			return nullptr;
+		}
+
+		std::string doc_name = K::pathJoin(zip_name, entry_name);
+		KXmlElement *xdoc = KXmlElement::createFromString(xml_u8, doc_name);
+		if (xdoc == nullptr) {
+			K__ERROR("E_XML: Failed to read xml document: '%s' from archive '%s'", entry_name.c_str(), zip_name.c_str());
+		}
+		return xdoc;
+	}
+
+	enum EType {
+		T_NODATA,
+		T_NUMBER,
+		T_STRINGID,
+		T_LITERAL,
+		T_OTHER,
+	};
+
+	// 無変換のセルデータを得る。得られた文字列が何を表しているかは type によって異なる
+	static EType getCellData(const KXmlElement *cell_xml, std::string *p_text, int *p_sid) {
+		// cell_xml の入力例:
+		// <c r="B1" s="0" t="n">
+		// 	<v>12</v>
+		// </c>
+
+		// データ文字列
+		const KXmlElement *v_elm = cell_xml->findNode("v");
+		if (v_elm == nullptr) return T_NODATA;
+
+		const char *v = v_elm->getText();
+		if (v == nullptr) return T_NODATA;
+
+		// データ型
+		const char *s = cell_xml->getAttrString("s");
+		const char *t = cell_xml->getAttrString("t");
+		if (t && strcmp(t, "n") == 0) {
+			*p_text = v;
+			return T_NUMBER; // <v> には数値が指定されている
+		}
+		if (t && strcmp(t, "s") == 0) {
+			int n = 0;
+			K::strToInt(v, &n);
+			*p_sid = n;
+			return T_STRINGID; // <v> には文字列IDが指定されている
+		}
+		if (t && strcmp(t, "str") == 0) {
+			*p_text = v;
+			return T_LITERAL; // <v> には文字列が直接指定されている
+		}
+		if (t) {
+			*p_text = v;
+			return T_OTHER; // それ以外の値が入っている
+		} else {
+			// t 属性がない
+			*p_text = v;
+			return T_LITERAL;
+		}
+	}
+
+	static bool getCellText(const KXmlElement *cell_xml, std::string *p_text, const std::unordered_map<int, std::string> &string_table) {
+		std::string data;
+		int sid = -1;
+		switch (getCellData(cell_xml, &data, &sid)) {
+		case T_STRINGID:
+			{
+				auto it = string_table.find(sid);
+				if (it != string_table.end()) {
+					if (it->second.empty() == false) {
+						*p_text = it->second;
+						return true;
+					}
+				}
+				return false;
+			}
+		case T_NUMBER:
+		case T_LITERAL:
+		case T_OTHER:
+			{
+				if (data.empty() == false) {
+					*p_text = data;
+					return true;
+				}
+				return false;
+			}
+		}
+		return false;
+	}
+
+	static bool loadFromZipAsXlsx(KUnzipper &zr, const std::string &xlsx_name, std::vector<KDataGrid> &result) {
+		// 文字列テーブルを取得
+		std::unordered_map<int, std::string> string_table;
+		{
+			const KXmlElement *strings_doc = loadXmlFromZip(zr, xlsx_name, "xl/sharedStrings.xml");
+			if (strings_doc) {
+				int string_id = 0;
+				const KXmlElement *string_elm = strings_doc->getChild(0);
+				for (int si=0; si<string_elm->getChildCount(); si++) {
+					const KXmlElement *si_elm = string_elm->getChild(si);
+					if (!si_elm->hasTag("si")) continue;
+
+					// パターンA
+					// <si>
+					//   <t>テキスト</t>
+					// </si>
+					const KXmlElement *t_elm = si_elm->findNode("t");
+					if (t_elm) {
+						const char *s = t_elm->getText("");
+						string_table[string_id] = s;
+						string_id++;
+						continue;
+					}
+
+					// パターンB（テキストの途中でスタイル変更がある場合にこうなる？）
+					// <si>
+					//   <rPr>スタイル情報いろいろ</rPr>
+					//   <r><t>テキスト1</t></r>
+					//   <r><t>テキスト2</t></r>
+					//   ....
+					// </si>
+					std::string s;
+					for (int r=0; r<si_elm->getChildCount(); r++) {
+						const KXmlElement *r_elm = si_elm->getChild(r);
+						if (r_elm->hasTag("r")) {
+							const KXmlElement *t_xml = r_elm->findNode("t");
+							if (t_xml) {
+								s += t_xml->getText("");
+							}
+						}
+					}
+					if (!s.empty()) {
+						string_table[string_id] = s;
+						string_id++;
+						continue;
+					}
+
+					// その他のパターン。解析できず。
+					// 文字列IDだけを進めておく
+					string_id++;
+				}
+				strings_doc->drop();
+			}
+		}
+
+		// ワークシートの枚数とシート名を取得
+		std::vector<std::string> sheet_names;
+		{
+			const KXmlElement *xDoc = loadXmlFromZip(zr, xlsx_name, "xl/workbook.xml");
+			const KXmlElement *xRoot = xDoc->getChild(0);
+			const KXmlElement *xSheets = xRoot->findNode("sheets");
+			for (int i=xSheets->findChildByTag("sheet"); i>=0; i=xSheets->findChildByTag("sheet", i+1)) {
+				const KXmlElement *elm = xSheets->getChild(i);
+				const char *s = elm->getAttrString("name");
+				K__ASSERT(s);
+				sheet_names.push_back(s);
+			}
+			xDoc->drop();
+		}
+
+		// ワークシートの中身を取得
+		struct CELL {
+			int row, col;
+			std::string str;
+		};
+		for (int i=0; i<(int)sheet_names.size(); i++) {
+			std::vector<CELL> cells;
+			{
+				const std::string filename = K::str_sprintf("xl/worksheets/sheet%d.xml", 1+i);
+				const KXmlElement *xDoc = loadXmlFromZip(zr, xlsx_name, filename);
+				const KXmlElement *xRoot = xDoc->getChild(0);
+				const KXmlElement *xSheetData = xRoot->findNode("sheetData");
+				for (int r=0; r<xSheetData->getChildCount(); r++) {
+					const KXmlElement *xRow = xSheetData->getChild(r);
+					if (!xRow->hasTag("row")) continue;
+
+					for (int c=0; c<xRow->getChildCount(); c++) {
+						const KXmlElement *xCell = xRow->getChild(c);
+						if (!xCell->hasTag("c")) continue;
+
+						// とんでもないセル番号が入っている場合がある "ZA1" とか
+						// しかし実際には空文字列が入っているだけだったりするので、
+						// 有効な文字列が入っているかどうかを先に調べる。
+						// 空文字列のセルだった場合は存在しないものとして扱う
+						std::string str;
+						if (getCellText(xCell, &str, string_table)) {
+							const char *coord = xCell->getAttrString("r");
+							int col = -1;
+							int row = -1;
+							if (KDataGrid::decodeCellCoord(coord, &col, &row)) {
+								CELL cell;
+								cell.col = col;
+								cell.row = row;
+								cell.str = str;
+								cells.push_back(cell);
+							}
+						}
+					}
+				}
+				xDoc->drop();
+			}
+
+			// シートに対応する DataGrid を作成する
+			{
+				KDataGrid data_grid;
+				data_grid.setSourceLocation(xlsx_name, 0, 0);
+				data_grid.setName(sheet_names[i]);
+				for (auto it=cells.begin(); it!=cells.end(); ++it) {
+					data_grid.setCell(it->col, it->row, it->str);
+				}
+				result.push_back(data_grid);
+			}
+		}
+		return true;
+	}
+};
+
+
+
+bool KXlsxFile::loadFromStream(KInputStream &file, const std::string &xlsx_name, std::vector<KDataGrid> &result) {
+	return CXlsxImpl::loadFromStream(file, xlsx_name, result);
+}
+bool KXlsxFile::loadFromFileName(const std::string &xlsx_name, std::vector<KDataGrid> &result) {
+	return CXlsxImpl::loadFromFileName(xlsx_name, result);
+}
+bool KXlsxFile::loadFromMemory(const void *bin, size_t size, const std::string &name, std::vector<KDataGrid> &result) {
+	return CXlsxImpl::loadFromMemory(bin, size, name, result);
+}
+
+#pragma endregion // KExcel
+
+
+
+
+class CCoreExcelReader2 {
+public:
+	std::vector<KDataGrid> m_Sheets;
+	std::string m_FileName;
+
+	CCoreExcelReader2() {
+	}
+	virtual ~CCoreExcelReader2() {
+		clear();
+	}
+	void clear() {
+		m_Sheets.clear();
+		m_FileName.clear();
+	}
+	bool empty() const {
+		return m_Sheets.empty();
+	}
+	std::string getFileName() const {
+		return m_FileName;
+	}
+	int getSheetCount() const {
+		return (int)m_Sheets.size();
+	}
+	std::string getSheetName(int sheet) const {
+		return m_Sheets[sheet].getName();
+	}
+	int getSheetByName(const std::string &name) const {
+		for (int i=0; i<m_Sheets.size(); i++) {
+			if (m_Sheets[i].getName().compare(name) == 0) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	bool getSheetDimension(int sheet, int *col, int *row, int *colcount, int *rowcount) const {
+		return m_Sheets[sheet].getDimension(col, row, colcount, rowcount);
+	}
+	std::string getDataString(int sheet, int col, int row) const {
+		std::string s;
+		m_Sheets[sheet].getCell(col, row, &s);
+		return s;
+	}
+	bool getCellByText(int sheet, const std::string &s, int *col, int *row) const {
+		return m_Sheets[sheet].findCell(s, col, row);
+	}
+	void scanCells(int sheet, KDataGridCallback *cb) const {
+		m_Sheets[sheet].scanCells(cb);
+	}
+	bool loadFromFile(KInputStream &file, const std::string &xlsx_name) {
+		clear();
+		if (CXlsxImpl::loadFromStream(file, xlsx_name, m_Sheets)) {
+			m_FileName = xlsx_name;
+			return true;
+		} else {
+			clear();
+			return false;
+		}
+	}
+};
+
+
+
+
+
+
+
+
+
+
 
 
 // 文字列 s を xml に組み込めるようにする
@@ -29,8 +397,8 @@ static void _EscapeString(std::string &s) {
 }
 
 // 文字列 s をエスケープする必要がある？
-static bool _ShouldEscapeString(const char *s) {
-	K__ASSERT(s);
+static bool _ShouldEscapeString(const std::string &ss) {
+	const char *s = ss.c_str();
 	return HAS_CHAR(s, '<') || HAS_CHAR(s, '>') || HAS_CHAR(s, '"') || HAS_CHAR(s, '\'') || HAS_CHAR(s, '\n');
 }
 
@@ -91,7 +459,13 @@ class CCoreExcelReader {
 	typedef std::unordered_map<int, const KXmlElement*> Int_Elms;
 	typedef std::unordered_map<const KXmlElement*, Int_Elms> Sheet_RowElms;
 	mutable Sheet_RowElms m_RowElements;
+
 public:
+
+#if SHEET_TEST
+	std::vector<KDataGrid> m_Sheets;
+#endif
+
 	CCoreExcelReader() {
 		m_WorkBookDoc = nullptr;
 	}
@@ -249,7 +623,7 @@ public:
 		}
 		return false;
 	}
-	void scanCells(int sheet, KExcelScanCellsCallback *cb) const {
+	void scanCells(int sheet, KDataGridCallback *cb) const {
 		if (sheet < 0) return;
 		if (sheet >= (int)m_WorkSheets.size()) return;
 
@@ -358,6 +732,38 @@ public:
 		}
 
 		m_FileName = xlsx_name;
+
+		#if SHEET_TEST
+		{
+			for (auto it=m_WorkSheets.begin(); it!=m_WorkSheets.end(); ++it) {
+				const KXmlElement *doc = *it;
+				const KXmlElement *root_elm = doc->getChild(0);
+				const KXmlElement *sheet_xml = root_elm->findNode("sheetData");
+
+				// 値が設定されている全てのセルを追加する
+				KDataGrid sheet;
+				CMakeSheet ms;
+				ms.m_Sheet = &sheet;
+				scan_cells(sheet_xml, &ms);
+				m_Sheets.push_back(sheet);
+			}
+
+			// シート名
+			{
+				const KXmlElement *root_elm = m_WorkBookDoc->getChild(0);
+				const KXmlElement *sheets_xml = root_elm->findNode("sheets");
+				int idx = 0;
+				for (int iSheet=sheets_xml->findChildByTag("sheet"); iSheet>=0; iSheet=sheets_xml->findChildByTag("sheet", iSheet+1)) {
+					const KXmlElement *xSheet = sheets_xml->getChild(iSheet);
+					const char *s = xSheet->getAttrString("name");
+					m_Sheets[idx].setSourceLocation(xlsx_name + "@" + s, 0, 0);
+					m_Sheets[idx].setName(s);
+					idx++;
+				}
+				K__ASSERT(idx == m_Sheets.size());
+			}
+		}
+		#endif
 		return true;
 	}
 
@@ -413,7 +819,7 @@ private:
 	bool parse_cell_position(const char *ss, int *col, int *row) const {
 		return KExcelFile::decodeCellName(ss, col, row);
 	}
-	void scan_cells(const KXmlElement *sheet_xml, KExcelScanCellsCallback *cb) const {
+	void scan_cells(const KXmlElement *sheet_xml, KDataGridCallback *cb) const {
 		if (sheet_xml == nullptr) return;
 
 		for (int r=0; r<sheet_xml->getChildCount(); r++) {
@@ -538,7 +944,7 @@ private:
 		return v_elm->getText();
 	}
 
-	class CScanDim: public KExcelScanCellsCallback {
+	class CScanDim: public KDataGridCallback {
 	public:
 		int col0_, col1_, row0_, row1_;
 
@@ -548,7 +954,7 @@ private:
 			row0_ = -1;
 			row1_ = -1;
 		}
-		virtual void onCell(int col, int row, const char *s) override {
+		virtual void onCell(int col, int row, const std::string &s) override {
 			if (col0_ < 0) {
 				col0_ = col;
 				col1_ = col;
@@ -562,76 +968,48 @@ private:
 			}
 		}
 	};
+
+#if SHEET_TEST
+	class CMakeSheet: public KDataGridCallback {
+	public:
+		KDataGrid *m_Sheet;
+
+		CMakeSheet() {
+			m_Sheet = nullptr;
+		}
+		virtual void onCell(int col, int row, const std::string &s) override {
+			m_Sheet->setCell(col, row, s);
+		}
+	};
+#endif
+
 };
+
+
+
+
+
+
+
+
+
 
 
 #pragma region KExcelFile
 std::string KExcelFile::encodeCellName(int col, int row) {
-	if (col < 0) return "";
-	if (row < 0) return "";
-	if (col < EXCEL_ALPHABET_NUM) { // A～Z
-		char c = (char)('A' + col);
-		char s[256];
-		sprintf_s(s, sizeof(s), "%c%d", c, 1+row);
-		return s;
-	}
-	if (col < EXCEL_ALPHABET_NUM*EXCEL_ALPHABET_NUM) { // AA～ZZ
-		int off = col - EXCEL_ALPHABET_NUM; // AA=0 としたときのカラム番号
-		char c1 = (char)('A' + (off / EXCEL_ALPHABET_NUM));
-		char c2 = (char)('A' + (off % EXCEL_ALPHABET_NUM));
-		char s[256];
-		K__ASSERT(isalpha(c1));
-		K__ASSERT(isalpha(c2));
-		sprintf_s(s, sizeof(s), "%c%c%d", c1, c2, 1+row);
-		return s;
-	}
-	return "";
+	return KDataGrid::encodeCellCoord(col, row);
 }
-/// "A2" や "AM244" などのセル番号を int の組にデコードする
 bool KExcelFile::decodeCellName(const std::string &s, int *col, int *row) {
-	if (s.empty()) return false;
-	int c = -1;
-	int r = -1;
-
-	if (isalpha(s[0]) && isdigit(s[1])) {
-		// セル番号が [A-Z][0-9].* にマッチしている。
-		// 例えば "A1" や "Z42" など。
-		c = toupper(s[0]) - 'A';
-		K__ASSERT(0 <= c && c < EXCEL_ALPHABET_NUM);
-		r = strtol(s.c_str() + 1, nullptr, 0);
-		r--; // １起算 --> 0起算
-
-	} else if (isalpha(s[0]) && isalpha(s[1]) && isdigit(s[2])) {
-		// セル番号が [A-Z][A-Z][0-9].* にマッチしている。
-		// 例えば "AA42" や "KZ1217" など
-		int idx1 = toupper(s[0]) - 'A';
-		int idx2 = toupper(s[1]) - 'A';
-		K__ASSERT(0 <= idx1 && idx1 < EXCEL_ALPHABET_NUM);
-		K__ASSERT(0 <= idx2 && idx2 < EXCEL_ALPHABET_NUM);
-		// AA は A～Z の次の要素(26番目)なので、26からカウントする
-		c = EXCEL_ALPHABET_NUM + idx1 * EXCEL_ALPHABET_NUM + idx2;
-		r = strtol(s.c_str() + 2, nullptr, 0);
-		r--; // １起算 --> 0起算
-	}
-	if (c >= 0 && r >= 0) {
-		// ここで、セル範囲として 0xFFFFF が入る可能性に注意。(LibreOffice Calc で現象を確認）
-		// 0xFFFFF 以上の値が入っていたら範囲取得失敗とみなす
-		if (r >= 0xFFFFF) {
-			return false;
-		}
-		K__ASSERT(0 <= c && c < EXCEL_COL_LIMIT);
-		K__ASSERT(0 <= r && r < EXCEL_ROW_LIMIT);
-		if (col) *col = c;
-		if (row) *row = r;
-		return true;
-	}
-
-	return false;
+	return KDataGrid::decodeCellCoord(s, col, row);
 }
 
 
 KExcelFile::KExcelFile() {
+#if 0
 	m_Impl = std::make_shared<CCoreExcelReader>();
+#else
+	m_Impl = std::make_shared<CCoreExcelReader2>();
+#endif
 }
 bool KExcelFile::empty() const {
 	return m_Impl->empty();
@@ -679,17 +1057,34 @@ std::string KExcelFile::getSheetName(int sheet) const {
 bool KExcelFile::getSheetDimension(int sheet, int *col, int *row, int *colcount, int *rowcount) const {
 	return m_Impl->getSheetDimension(sheet, col, row, colcount, rowcount);
 }
-const char * KExcelFile::getDataString(int sheet, int col, int row) const {
+std::string KExcelFile::getDataString(int sheet, int col, int row) const {
 	return m_Impl->getDataString(sheet, col, row);
 }
 bool KExcelFile::getCellByText(int sheet, const std::string &s, int *col, int *row) const {
 	return m_Impl->getCellByText(sheet, s, col, row);
 }
-void KExcelFile::scanCells(int sheet, KExcelScanCellsCallback *cb) const {
+void KExcelFile::scanCells(int sheet, KDataGridCallback *cb) const {
 	m_Impl->scanCells(sheet, cb);
 }
+const std::vector<KDataGrid> & KExcelFile::getSheets() const {
+	return m_Impl->m_Sheets;
+}
+const KDataGrid & KExcelFile::getSheet(int i) const {
+	return m_Impl->m_Sheets[i];
+}
+const KDataGrid * KExcelFile::findSheet(const std::string &name) const {
+	for (auto it=m_Impl->m_Sheets.begin(); it!=m_Impl->m_Sheets.end(); ++it) {
+		if (it->getName().compare(name) == 0) {
+			return &(*it);
+		}
+	}
+	return nullptr; 
+}
+
+
+
 std::string KExcelFile::exportXmlString(bool with_header, bool with_comment) {
-	class CB: public KExcelScanCellsCallback {
+	class CB: public KDataGridCallback {
 	public:
 		std::string &dest_;
 		int last_row_;
@@ -699,8 +1094,8 @@ std::string KExcelFile::exportXmlString(bool with_header, bool with_comment) {
 			last_row_ = -1;
 			last_col_ = -1;
 		}
-		virtual void onCell(int col, int row, const char *s) override {
-			if (s==nullptr || s[0]=='\0') return;
+		virtual void onCell(int col, int row, const std::string &s) override {
+			if (s.empty()) return;
 			K__ASSERT(last_row_ <= row); // 行番号は必ず前回と等しいか、大きくなる
 			if (last_row_ != row) {
 				if (last_row_ >= 0) { // 行タグを閉じる
@@ -724,7 +1119,7 @@ std::string KExcelFile::exportXmlString(bool with_header, bool with_comment) {
 				dest_ += "<c>";
 			}
 			if (_ShouldEscapeString(s)) { // xml禁止文字が含まれているなら CDATA 使う
-				dest_ += K::str_sprintf("<![CDATA[%s]]>", s);
+				dest_ += K::str_sprintf("<![CDATA[%s]]>", s.c_str());
 			} else {
 				dest_ += s;
 			}
@@ -782,8 +1177,8 @@ std::string KExcelFile::exportText() {
 		for (int r=row; r<row+nRow; r++) {
 			bool has_cell = false;
 			for (int c=col; c<col+nCol; c++) {
-				const char *str = getDataString(iSheet, c, r);
-				if (str && str[0]) {
+				std::string str = getDataString(iSheet, c, r);
+				if (str.empty() == false) {
 					if (blank_lines >= 1) {
 						s += "\n";
 						blank_lines = 0;
@@ -806,6 +1201,11 @@ std::string KExcelFile::exportText() {
 }
 
 #pragma endregion // KExcelFile
+
+
+
+
+
 
 
 

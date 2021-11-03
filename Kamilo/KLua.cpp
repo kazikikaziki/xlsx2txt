@@ -251,6 +251,12 @@ int KLua::load(lua_State *ls, const char *code, int size, const char *debug_name
 	}
 	return LUA_OK;
 }
+std::string KLua::getglobal_stdstr(lua_State *ls, const char *key) {
+	lua_getglobal(ls, key);
+	std::string ret = luaL_optstring(ls, -1, "");
+	lua_pop(ls, 1);
+	return ret;
+}
 int KLua::getglobal_int(lua_State *ls, const char *key) {
 	lua_getglobal(ls, key);
 	int ret = (int)lua_tointeger(ls, -1);
@@ -268,22 +274,30 @@ void KLua::getglobal_int4(lua_State *ls, const char *key, int *x, int *y, int *z
 	if (lua_istable(ls, -1)) {
 		if (x) {
 			lua_geti(ls, -1, 1);
-			*x = (int)lua_tointeger(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*x = (int)lua_tointeger(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (y) {
 			lua_geti(ls, -1, 2);
-			*y = (int)lua_tointeger(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*y = (int)lua_tointeger(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (z) {
 			lua_geti(ls, -1, 3);
-			*z = (int)lua_tointeger(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*z = (int)lua_tointeger(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (w) {
 			lua_geti(ls, -1, 4);
-			*w = (int)lua_tointeger(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*w = (int)lua_tointeger(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 	}
@@ -294,22 +308,30 @@ void KLua::getglobal_float4(lua_State *ls, const char *key, float *x, float *y, 
 	if (lua_istable(ls, -1)) {
 		if (x) {
 			lua_geti(ls, -1, 1);
-			*x = (float)lua_tonumber(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*x = (float)lua_tonumber(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (y) {
 			lua_geti(ls, -1, 2);
-			*y = (float)lua_tonumber(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*y = (float)lua_tonumber(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (z) {
 			lua_geti(ls, -1, 3);
-			*z = (float)lua_tonumber(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*z = (float)lua_tonumber(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 		if (w) {
 			lua_geti(ls, -1, 4);
-			*w = (float)lua_tonumber(ls, -1);
+			if (lua_isnumber(ls, -1)) {
+				*w = (float)lua_tonumber(ls, -1);
+			}
 			lua_pop(ls, 1);
 		}
 	}

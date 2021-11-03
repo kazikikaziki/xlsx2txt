@@ -14,26 +14,30 @@
 // ファイル名と行番号付きでエラーメッセージを出力する
 // ※fmt はリテラルでないといけない。
 // マクロ内の "TEXT" fmt のようなリテラル文字列結合で fmt が変数だとコンパイルエラーが発生する
-#define K__ERROR(fmt, ...) Kamilo::K::error(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+//#define K__ERROR(fmt, ...) Kamilo::K::error(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define K__ERROR(fmt, ...) Kamilo::K::error2(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 
 // ファイル名と行番号付きで警告を出力する
 // ※fmt はリテラルでないといけない。
 // マクロ内の "TEXT" fmt のようなリテラル文字列結合で fmt が変数だとコンパイルエラーが発生する
-#define K__WARNING(fmt, ...) Kamilo::K::warning(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+//#define K__WARNING(fmt, ...) Kamilo::K::warning(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define K__WARNING(fmt, ...) Kamilo::K::warning2(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 
 // ファイル名と行番号付きでテキストを出力する
 // ※fmt はリテラルでないといけない。
 // マクロ内の "TEXT" fmt のようなリテラル文字列結合で fmt が変数だとコンパイルエラーが発生する
-#define K__PRINT(fmt, ...) Kamilo::K::print(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+//#define K__PRINT(fmt, ...) Kamilo::K::print(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define K__PRINT(fmt, ...) Kamilo::K::print2(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 
 // ファイル名と行番号付きで詳細を出力する
 // ※verbose は KAMILO_VERBOSE が定義されているときのみ動作する
 // ※fmt はリテラルでないといけない。
 // マクロ内の "TEXT" fmt のようなリテラル文字列結合で fmt が変数だとコンパイルエラーが発生する
-#define K__VERBOSE(fmt, ...) Kamilo::K::verbose(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+//#define K__VERBOSE(fmt, ...) Kamilo::K::verbose(("%s(%d): " fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define K__VERBOSE(fmt, ...) Kamilo::K::verbose2(__FILE__, __LINE__, fmt, ##__VA_ARGS__)
 
 
 #define K__ASSERT(expr)  (!(expr) ? (K__ERROR("[ASSERTION_FAILURE] %s", #expr), Kamilo::K::_break()) : (void)0)
@@ -80,13 +84,13 @@ typedef int K_LCID;
 #define K__SetErrorHook(hook)      Kamilo::K::setErrorHook(hook)
 
 
-struct _StrW {
-	_StrW();
-	_StrW(int x);
-	_StrW(float x);
-	_StrW(const char *u8);
-	_StrW(const std::string &u8);
-	_StrW(const std::wstring &x);
+struct K_StrW {
+	K_StrW();
+	K_StrW(int x);
+	K_StrW(float x);
+	K_StrW(const char *u8);
+	K_StrW(const std::string &u8);
+	K_StrW(const std::wstring &x);
 	std::wstring ws;
 };
 
@@ -99,6 +103,7 @@ public:
 	static void _break();
 	static void _exit();
 	static bool _IsDebuggerPresent();
+	static void printf_u8(const char *fmt, ...);
 	#pragma endregion debug
 
 	#pragma region win32
@@ -126,9 +131,9 @@ public:
 	#pragma region output debug string
 	static void outputDebugStringU(const std::string &u8);
 	static void outputDebugStringW(const std::wstring &ws);
-	static void outputDebugFmt(const char *fmt, ...);
-	template <class... Args> static void outputDebug(Args... args) {
-		_StrW arglist[] = {args...};
+	static void outputDebugStringFmt(const char *fmt, ...);
+	template <class... Args> static void outputDebugString(Args... args) {
+		K_StrW arglist[] = {args...};
 		int numargs = sizeof...(args);
 		std::wstring ws;
 		for (int i=0; i<numargs; i++) {
@@ -139,6 +144,11 @@ public:
 	#pragma endregion // output debug string
 
 	#pragma region print
+	static void error2(const char *file, int line, const char *fmt, ...);
+	static void warning2(const char *file, int line, const char *fmt, ...);
+	static void verbose2(const char *file, int line, const char *fmt, ...);
+	static void print2(const char *file, int line, const char *fmt, ...);
+
 	static void print(const char *fmt_u8, ...);
 	static void printW(const wchar_t *wfmt, ...);
 	static void verbose(const char *fmt_u8, ...);
@@ -200,6 +210,7 @@ public:
 
 	#pragma region path
 	static std::string pathJoin(const std::string &path1, const std::string &path2);
+	static std::string pathJoinFmt(const std::string &path1, const char *path2_fmt, ...);
 	static std::string pathRemoveLastDelim(const std::string &path); ///< パスの末尾が / で終わっている場合、それを取り除く
 	static std::string pathAppendLastDelim(const std::string &path); ///< パスの末尾が / で終わるようにする
 	static std::string pathGetParent(const std::string &path); ///< 末尾のサブパスを取り除く
@@ -254,6 +265,7 @@ public:
 	static std::string strGetRight(const std::string &s, const std::string &separator_substr, bool empty_if_no_separatorr=true, bool trim=true);
 	static std::string strQuoted(const std::string &s);
 	static std::string strUnquoted(const std::string &s);
+	static void strSplitLeft(const std::string &s, const std::string &delims, std::string *p_left, std::string *p_right);
 	static std::vector<std::string> strSplit(const std::string &s, const std::string &delims, int maxcount=0, bool condense_delims=true, bool _trim=true);
 	static std::vector<std::string> strSplitByWord(const std::string &str, const std::string &sep_word);
 	static std::vector<std::string> strSplitLines(const std::string &s, bool skip_empty_lines=true, bool _trim=true);

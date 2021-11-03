@@ -2083,7 +2083,7 @@ void Test_bezier() {
 		// に貼りつければブラウザで確認できる
 		if (fabsf(len1 - len2) >= 1.0f) {
 			std::string s = K::str_sprintf("M %g, %g C %g, %g, %g, %g, %g, %g", p[0].x, p[0].y, p[1].x, p[1].y, p[2].x, p[2].y, p[3].x, p[3].y);
-			K::outputDebug(s);
+			K::outputDebugString(s);
 		}
 	}
 	#undef RND

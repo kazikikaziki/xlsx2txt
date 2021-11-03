@@ -1,196 +1,111 @@
 ﻿#pragma once
 #include <string>
+#include "KRef.h"
 
 namespace Kamilo {
 
-class KLog {
-public:
-	static void setThreadEnabled(bool value);
-
-	enum Level {
-		LEVEL_AST = 'A',
-
-		/// エラーテキスト。
-		/// KLog::setDialogEnabled() で true を指定した場合、エラーダイアログが自動的に表示される
-		LEVEL_ERR = 'E',
-
-		/// 警告テキスト
-		LEVEL_WRN = 'W',
-
-		/// 情報テキスト
-		LEVEL_INF = 'I',
-
-		/// デバッグテキスト
-		LEVEL_DBG = 'D',
-
-		/// 詳細なデバッグテキスト
-		LEVEL_VRB = 'V',
-
-		/// 無属性テキスト
-		/// 無属性テキストはフィルタリングされず、常に表示される
-		LEVEL_NUL = '\0',
-	};
-
-	struct Record {
-		Record() {
-			time_msec = 0;
-			time_sec = 0;
-			time_min = 0;
-			time_hour = 0;
-			time_mday = 0;
-			time_mon = 0;
-			time_year = 0;
-			app_msec = 0;
-			type = LEVEL_NUL;
-		}
-		int time_msec; // [0, 999]
-		int time_sec;  // [0, 60] including leap second
-		int time_min;  // [0, 59]
-		int time_hour; // [0, 23]
-		int time_mday; // [1, 31]
-		int time_mon;  // [1, 12]
-		int time_year;
-		int app_msec;        // アプリケーション起動からの経過時間をミリ秒単位で表した値
-		Level type;          // メッセージ属性（KLog::LEVEL_ERR や KLog::LEVEL_INFO など）
-		std::string text_u8; // メッセージ文字列(UTF8)
-	};
-
-	/// KLog のイベントコールバック用のクラス
-	/// @see KLog::setOutputCallback
-	class Callback {
-	public:
-		/// ログ出力の直前でコールバックされる。
-		/// @param level        ログの属性
-		///                     - KLog::LEVEL_AST アサーション
-		///                     - KLog::LEVEL_ERR エラー
-		///                     - KLog::LEVEL_WRN 警告
-		///                     - KLog::LEVEL_INF 情報
-		///                     - KLog::LEVEL_DBG デバッグ
-		///                     - KLog::LEVEL_VRB 詳細
-		///                     - KLog::LEVEL_NUL 無属性
-		/// @param text_u8     出力しようとしている文字列(utf8)
-		/// @param no_emit     既定のログ出力（コンソールやテキストファイルなど）が不要なら true をセットする。デフォルト値は false
-		/// @param no_dialog   既定のダイアログ処理が不要なら true をセットする。デフォルト値は false
-		/// @note
-		/// on_log_output の中でダイアログを表示する場合は KLog::isDialogAllowed() の値を確認すること
-		virtual void on_log_output(Level level, const char *text_u8, bool *no_emit, bool *no_dialog) = 0;
-	};
-
-	static void init();
-
-	/// エラーレベルのメッセージが発生したとき、既定のダイアログを出すかどうか。
-	/// エラーが起きた時にすぐに気が付くよう、デフォルトでは true になっている。
-	static void setDialogEnabled(bool value);
-
-	/// ダイアログを抑制する。
-	/// この効果は popDisableDialog まで続く。この呼び出しはネストすることができる
-	static void muteDialog();
-	static void unmuteDialog();
-
-	/// コールバック関数への出力を設定する。
-	static void setOutputCallback(Callback *cb);
-
-	/// デバッガー（例えば Visual C++ の[出力]ウィンドウなど）への出力を設定する
-	static void setOutputDebugger(bool value);
-
-	/// テキストファイルへの出力を設定する。
-	/// 空文字列 "" を指定すると出力を停止する
-	/// 指定されたファイルを追記モードで開く
-	///
-	/// @param filename_u8 テキストファイル名(utf8)
-	static void setOutputFileName(const char *filename_u8);
-
-	/// コンソールウィンドウへの出力を設定する
-	static void setOutputConsole(bool value, bool no_taskbar=false);
-
-	/// ログメッセージを出力する。
-	/// type には属性を表す文字を指定する。'E'rror, 'W'arning, 'I'nfo, 'D'ebug, 'V'erbose 無属性は '\0'
-	static void emit(Level lv, const char *u8);
-	static void emitv(Level lv, const char *fmt, va_list args);
-	static void emitf(Level lv, const char *fmt, ...);
-	static void emitv_w(Level lv, const wchar_t *fmt, va_list args);
-	static void emitf_w(Level lv, const wchar_t *fmt, ...);
-
-	/// テキストを出力する。
-	/// ユーザーによるコールバックを通さず、既定の出力先に直接書き込む。
-	/// コールバック内からログを出力したい時など、ユーザーコールバックの再帰呼び出しが邪魔になるときに使う
-	static void emit_nocallback(Level lv, const char *u8);
-
-	/// テキストを無加工のまま出力する。
-	/// 意図しない再帰呼び出しを防ぐため、いかなるユーザー定義コールバックも呼ばず、
-	/// 文字コード変換も行わず、そのまま fputs などに渡す
-	static void rawEmit(const char *s);
-	static void rawEmitv(const char *fmt, va_list args);
-	static void rawEmitf(const char *fmt, ...);
-
-	/// ログの区切り線を無属性テキストとして出力する
-	/// この区切り線は古いログを削除するときの境界として使う
-	/// @see clampFileByCutline
-	static void printSeparator();
-
-	/// バイナリデータの16進数表現を無属性テキストとして出力する。
-	/// sizeに 0 を指定した場合は、ヌル文字終端の文字列が指定されたとみなす
-	static void printBinary(const void *data, int size);
-
-	/// トレース用のメッセージ
-	static void printTrace(const char *file, int line);
-	static void printTracef(const char *file, int line, const char *fmt, ...);
-
-	/// 致命的エラーテキストを表示し、プログラムを exit(-1) で強制終了する。
-	/// 続行不可能なエラーが発生したときに使う。
-	static void printFatal(const char *msg);
-
-	static void printRecord_unsafe(const KLog::Record &rec);
-
-	static void printError(const char *fmt, ...);
-	static void printWarning(const char *fmt, ...);
-	static void printInfo(const char *fmt, ...);
-	static void printDebug(const char *fmt, ...);
-	static void printVerbose(const char *fmt, ...);
-	static void printText(const char *fmt, ...);
-
-	enum State {
-		/// コンソールに出力するか
-		STATE_HAS_OUTPUT_CONSOLE,
-
-		/// テキストファイルに出力するか
-		STATE_HAS_OUTPUT_FILE,
-
-		/// デバッガーに出力するか
-		STATE_HAS_OUTPUT_DEBUGGER,
-
-		/// Info レベルのログが出力されるかどうか
-		STATE_LEVEL_INFO,
-
-		/// Debug レベルのログが出力されるかどうか
-		STATE_LEVEL_DEBUG,
-
-		/// Verbose レベルのログが出力されるかどうか
-		STATE_LEVEL_VERBOSE,
-
-		/// ダイアログの表示が許可されているか？
-		/// KLog::setDialogEnabled で true が指定されていて、なおかつ KLog::muteDialog による抑制がされていない場合のみ true を返す
-		STATE_DIALOG_ALLOWED,
-	};
-	/// 内部状態を得る
-	static int getState(State s);
-
-	/// レベル level のメッセージを表示するかどうか
-	static void setLevelVisible(Level level, bool visible);
-
-	static void threadWait();
-	static void threadLock();
-	static void threadUnlock();
+enum KLogLv {
+	KLogLv_NONE,    ///< 無属性テキスト（無属性テキストはフィルタリングされず、常に表示される）
+	KLogLv_VERBOSE, ///< 詳細なデバッグテキスト
+	KLogLv_DEBUG,   ///< デバッグテキスト
+	KLogLv_INFO,    ///< 情報テキスト
+	KLogLv_WARNING, ///< 警告テキスト
+	KLogLv_ERROR,   ///< エラーテキスト。KLog::setDialogEnabled() で true を指定した場合、エラーダイアログが自動的に表示される
+	KLogLv_CRITICAL,///< 続行不可能なエラー
+	KLogLv_ENUM_MAX
 };
 
-class KLogFile {
+struct KLogRecord {
+	KLogRecord() {
+		time_msec = 0;
+		time_sec = 0;
+		time_min = 0;
+		time_hour = 0;
+		time_mday = 0;
+		time_mon = 0;
+		time_year = 0;
+		app_msec = 0;
+		lv = KLogLv_NONE;
+	}
+	int time_msec; // [0, 999]
+	int time_sec;  // [0, 60] including leap second
+	int time_min;  // [0, 59]
+	int time_hour; // [0, 23]
+	int time_mday; // [1, 31]
+	int time_mon;  // [1, 12]
+	int time_year;
+	int app_msec;        // アプリケーション起動からの経過時間をミリ秒単位で表した値
+	KLogLv lv;
+	std::string text_u8; // メッセージ文字列(UTF8)
+};
+
+enum KLogEmitFlag_ {
+	KLogEmitFlag_APPEND      = 0x01, // 追記モード
+	KLogEmitFlag_NODATETIME  = 0x02, // 日付時刻を省略
+	KLogEmitFlag_NOAPPTIME   = 0x04, // 経過ミリ秒を省略
+	KLogEmitFlag_NOPROCESSID = 0x08, // プロセスIDを省略
+	KLogEmitFlag_SHORTLEVEL  = 0x10, // 短い形式のレベル表示を使う
+	KLogEmitFlag_INIT_MUTE   = 0x20, // 初期化時には、全ての出力をOFFにした状態にしておく
+};
+typedef int KLogEmitFlags;
+
+class KLogEmitter: public KRef {
 public:
-	KLogFile();
-	bool open(const char *filename_u8);
-	bool isOpen();
+	virtual void emitString(KLogLv ll, const std::string &u8) = 0;
+	virtual void emitRecord(const KLogRecord &rec) = 0;
+	virtual void setFileOutput(const std::string &filename_u8, KLogEmitFlags flags) = 0;
+	virtual void setConsoleOutput(bool enabled) = 0;
+	virtual void setDebuggerOutput(bool enabled) = 0;
+	virtual std::string getFileOutput() const = 0;
+	virtual bool getConsoleOutput() const = 0;
+	virtual bool getDebuggerOutput() const = 0;
+};
+
+class KLoggerCallback {
+public:
+	/// ログ出力の直前でコールバックされる。
+	/// @param ll      ログレベル
+	/// @param u8      出力しようとしている文字列(utf8)
+	/// @param p_mute  既定のログ出力（コンソールやテキストファイルなど）が不要なら true をセットする。デフォルト値は false
+	virtual void on_log(KLogLv ll, const std::string &u8, bool *p_mute) = 0;
+};
+
+class KLogger: public KRef {
+public:
+	static void open(KLogEmitFlags flags=0);
+	static void close();
+	static KLogger * get(const char *group="");
+
+public:
+	virtual KLogLv getLevel() const = 0;
+	virtual void setLevel(KLogLv ll) = 0;
+	virtual void emit(KLogLv ll, const std::string &u8) = 0;
+	virtual void emit(KLogLv ll, const std::wstring &ws) = 0;
+	virtual void emitf(KLogLv ll, const char *fmt, ...) = 0;
+	virtual void setCallback(KLoggerCallback *cb) = 0;
+	virtual void setEmitter(KLogEmitter *emitter) = 0;
+	virtual KLogEmitter * getEmitter() = 0;
+	virtual void pushLevel(KLogLv ll) = 0;
+	virtual void popLevel() = 0;
+
+	void critical(const std::string &s){ emit(KLogLv_CRITICAL, s); }
+	void error(const std::string &s)   { emit(KLogLv_ERROR, s); }
+	void warning(const std::string &s) { emit(KLogLv_WARNING, s); }
+	void info(const std::string &s)    { emit(KLogLv_INFO, s); }
+	void debug(const std::string &s)   { emit(KLogLv_DEBUG, s); }
+	void verbose(const std::string &s) { emit(KLogLv_VERBOSE, s); }
+	void print(const std::string &s)   { emit(KLogLv_NONE, s); }
+};
+
+class KLogFileOutput {
+public:
+	KLogFileOutput();
+	bool open(const std::string &filename_u8, KLogEmitFlags flags);
+	bool isOpen() const;
+	std::string getFileName() const;
 	void close();
 	void writeLine(const char *u8);
-	void writeRecord(const KLog::Record &rec);
+	void writeRecord(const KLogRecord &rec);
 
 	/// ログの区切り線よりも前の部分を削除する
 	/// @see printSeparator
@@ -214,9 +129,10 @@ private:
 	static int findSeparatorByIndex(const char *text, size_t size, int index);
 	std::string m_FileName;
 	FILE *m_File;
+	KLogEmitFlags m_Flags;
 };
 
-class KLogConsole {
+class KLogConsoleOutput {
 public:
 	// コンソールの文字と背景色のフラグ
 	enum {
@@ -256,27 +172,27 @@ public:
 		FG_BLUE   = _FOREGROUND_BLUE|_FOREGROUND_INTENSITY,
 	};
 
-	KLogConsole();
+	KLogConsoleOutput();
 	bool open(bool no_taskbar);
-	bool isOpen();
+	bool isOpen() const;
 	void close();
 	void writeLine(const char *u8);
-	void writeRecord(const KLog::Record &rec);
+	void writeRecord(const KLogRecord &rec);
 	void setColorFlags(int flags);
-	int getColorFlags();
+	int getColorFlags() const;
 private:
-	void getLevelColorFlags(char type, uint16_t *typecolor, uint16_t *msgcolor);
+	void getLevelColorFlags(KLogLv level, uint16_t *typecolor, uint16_t *msgcolor);
 	FILE *m_Stdout;
 };
 
-class KLogDebugger {
+class KLogDebuggerOutput {
 public:
-	KLogDebugger();
+	KLogDebuggerOutput();
 	bool open();
-	bool isOpen();
+	bool isOpen() const;
 	void close();
 	void writeLine(const char *u8);
-	void writeRecord(const KLog::Record &rec);
+	void writeRecord(const KLogRecord &rec);
 private:
 	bool m_IsOpen;
 };

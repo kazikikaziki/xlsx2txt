@@ -7,7 +7,7 @@ namespace Kamilo {
 
 static const int SCENE_ID_LIMIT = 100;
 
-#define TRAC(obj)  KLog::printInfo("%s: '%s'", __FUNCTION__, obj ? typeid(*obj).name() : "(nullptr)");
+#define TRAC(obj)  K__PRINT("%s: '%s'", __FUNCTION__, obj ? typeid(*obj).name() : "(nullptr)");
 
 
 const KNamedValues * KScene::getParams() const {
@@ -140,9 +140,9 @@ public:
 		K__ASSERT(id >= 0);
 		K__ASSERT(id < SCENE_ID_LIMIT);
 		if (getScene(id)) {
-			KLog::printWarning("W_SCENE_OVERWRITE: KScene with the same id '%d' already exists. The scene will be overwritten by new one.", id);
+			K__WARNING("W_SCENE_OVERWRITE: KScene with the same id '%d' already exists. The scene will be overwritten by new one.", id);
 			if (m_curr_scene.scene == getScene(id)) {
-				KLog::printWarning("W_DESTROY_RUNNING_SCENE: Running scene with id '%d' will immediatly destroy.", id);
+				K__WARNING("W_DESTROY_RUNNING_SCENE: Running scene with id '%d' will immediatly destroy.", id);
 			}
 			if (m_scenelist[id]) delete m_scenelist[id];
 		}
@@ -169,17 +169,17 @@ public:
 	void setNextScene(KSCENEID id, const KNamedValues *params) {
 		KScene *scene = getScene(id);
 		if (m_next_scene.scene) {
-			KLog::printWarning("W_SCENE_OVERWRITE: Queued KScene '%s' will be overwritten by new posted scene '%s'",
+			K__WARNING("W_SCENE_OVERWRITE: Queued KScene '%s' will be overwritten by new posted scene '%s'",
 				typeid(*m_next_scene.scene).name(),
 				(scene ? typeid(*scene).name() : "(nullptr)")
 			);
 			m_next_scene.scene = nullptr;
 		}
 		if (scene) {
-			KLog::printInfo("KSceneManager::setNextScene: %s", typeid(*scene).name());
+			K__PRINT("KSceneManager::setNextScene: %s", typeid(*scene).name());
 		}
 		if (id && scene==nullptr) {
-			KLog::printInfo("E_NO_SCENE_ID: (KSCENEID)%s", id);
+			K__PRINT("E_NO_SCENE_ID: (KSCENEID)%s", id);
 		}
 		m_next_scene.scene = scene;
 		m_next_scene.id = id;
@@ -189,7 +189,7 @@ public:
 		}
 	}
 	void restart() {
-		KLog::printInfo("Restart!");
+		K__PRINT("Restart!");
 		setNextScene(m_curr_scene.id, &m_curr_scene.params);
 	}
 	void process_switching() {

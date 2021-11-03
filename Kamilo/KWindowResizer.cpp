@@ -165,10 +165,10 @@ public:
 		if (sig.check(K_SIG_WINDOW_KEY_DOWN)) {
 			// ウィンドウイベントは別スレッドから飛んでくる場合があることに注意
 			// ビデオモードの変更などは必ずメインスレッドで行うようにしておく
-			KKeyboard::Key key = (KKeyboard::Key)sig.getInt("key");
-			bool shift = KKeyboard::isKeyDown(KKeyboard::KEY_SHIFT);
-			bool alt = KKeyboard::isKeyDown(KKeyboard::KEY_ALT);
-			if (key == KKeyboard::KEY_ENTER && alt) {
+			KKey key = (KKey)sig.getInt("key");
+			bool shift = KKeyboard::isKeyDown(KKey_SHIFT);
+			bool alt = KKeyboard::isKeyDown(KKey_ALT);
+			if (key == KKey_ENTER && alt) {
 				// Alt + Enter
 				if (isWindowed()) {
 					setFullscreenTruly();
@@ -176,7 +176,7 @@ public:
 					setWindowed();
 				}
 			}
-			if (key == KKeyboard::KEY_F11) {
+			if (key == KKey_F11) {
 				// [F11] or [Shift + F11]
 				if (!isWindowed()) {
 					// 真のフルスクリーンだったらいったんウィンドウモードに戻す

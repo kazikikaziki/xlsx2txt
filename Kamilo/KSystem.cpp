@@ -1,10 +1,13 @@
 ﻿#include "KSystem.h"
 //
+#include "KLog.h"
+#include "KInternal.h"
 #include <assert.h>
 #include <intrin.h> // __cpuid
 #include <time.h>
 #include <Windows.h>
 #include <Shlobj.h> // SHGetFolderPath
+#include <locale.h>
 
 namespace Kamilo {
 
@@ -210,6 +213,65 @@ int KSystem::getInt(IntProp id) {
 		}
 	}
 	return -1;
+}
+
+
+void KSystem::printInfo(KLogger *log, const KUserAppDesc *desc) {
+	// バージョン
+	if (desc) {
+		log->emitf(KLogLv_NONE, "");
+		log->emitf(KLogLv_NONE, "---- App info ----");
+		log->emitf(KLogLv_NONE, "## APPNAME : %s", desc->name.c_str());
+		log->emitf(KLogLv_NONE, "## EDITION : %s", desc->edition.c_str());
+		log->emitf(KLogLv_NONE, "## VERSION : %s", desc->version.c_str());
+		log->emitf(KLogLv_NONE, "## INTERNAL_VERSION: %s", desc->internal_version.c_str());
+		log->emitf(KLogLv_NONE, "## BUILD   : %s %s", __DATE__, __TIME__);
+		log->emitf(KLogLv_NONE, "");
+	}
+
+	const int LEN = 256;
+	char productname[LEN] = {0};
+	char cpuname[LEN] = {0};
+	char cpuvendor[LEN] = {0};
+	char localtime[LEN] = {0};
+	char exepath[LEN] = {0};
+	KSystem::getString(KSystem::STRPROP_PRODUCTNAME, productname, LEN);
+	KSystem::getString(KSystem::STRPROP_CPUNAME, cpuname, LEN);
+	KSystem::getString(KSystem::STRPROP_CPUVENDOR, cpuvendor, LEN);
+	KSystem::getString(KSystem::STRPROP_LOCALTIME, localtime, LEN);
+	KSystem::getString(KSystem::STRPROP_SELFPATH, exepath, LEN);
+	std::string curdir = K::sysGetCurrentDir();
+
+	int langid = KSystem::getInt(KSystem::INTPROP_LANGID);
+	int sysmem_total_kb = KSystem::getInt(KSystem::INTPROP_SYSMEM_TOTAL_KB);
+	int sysmem_avail_kb = KSystem::getInt(KSystem::INTPROP_SYSMEM_AVAIL_KB);
+	int appmem_total_kb = KSystem::getInt(KSystem::INTPROP_APPMEM_TOTAL_KB);
+	int appmem_avail_kb = KSystem::getInt(KSystem::INTPROP_APPMEM_AVAIL_KB);
+	int screen_w = KSystem::getInt(KSystem::INTPROP_SCREEN_W);
+	int screen_h = KSystem::getInt(KSystem::INTPROP_SCREEN_H);
+	int has_sse2 = KSystem::getInt(KSystem::INTPROP_SSE2);
+	
+	char tmp[256];
+	strcpy_s(tmp, setlocale(LC_CTYPE, nullptr));
+	setlocale(LC_CTYPE, ""); // ロケール確認のために OS 標準に戻す
+	log->emitf(KLogLv_NONE, "---- PC Info ----");
+	log->emitf(KLogLv_NONE, "Lib Build : %s %s", __DATE__, __TIME__);
+	log->emitf(KLogLv_NONE, "OS Version: %s", productname);
+	log->emitf(KLogLv_NONE, "CPU Name  : %s", cpuname);
+	log->emitf(KLogLv_NONE, "CPU Vendor: %s", cpuvendor);
+	log->emitf(KLogLv_NONE, "DateTime  : %s", localtime);
+	log->emitf(KLogLv_NONE, "CurrDir   : %s", curdir.c_str());
+	log->emitf(KLogLv_NONE, "ExecName  : %s", exepath);
+	log->emitf(KLogLv_NONE, "Locale    : %s", setlocale(LC_CTYPE, nullptr));
+	log->emitf(KLogLv_NONE, "LangID    : %d (0x%04x)", langid, langid);
+	log->emitf(KLogLv_NONE, "Sys Mem Total : %.1f[MB]", sysmem_total_kb/1024.0f);
+	log->emitf(KLogLv_NONE, "Sys Mem Using : %.1f[MB]", (sysmem_total_kb - sysmem_avail_kb)/1024.0f);
+	log->emitf(KLogLv_NONE, "App Mem Total : %.1f[MB]", appmem_total_kb/1024.0f);
+	log->emitf(KLogLv_NONE, "App Mem Using : %.1f[MB]", (appmem_total_kb - appmem_avail_kb)/1024.0f);
+	log->emitf(KLogLv_NONE, "SSE2      : %s", has_sse2 ? "Yes" : "No");
+	log->emitf(KLogLv_NONE, "Screen    : %d x %d", screen_w, screen_h);
+	log->emitf(KLogLv_NONE, "");
+	setlocale(LC_CTYPE, tmp); // ロケール戻す
 }
 
 } // namespace

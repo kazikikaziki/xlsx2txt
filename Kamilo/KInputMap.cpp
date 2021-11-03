@@ -54,28 +54,28 @@ public:
 // keyboard key
 class CKbKeyElm: public IKeyboardKeyElm {
 	// このボタンに割り当てられたキーボードキー。
-	// 割り当てなしの場合は KKeyboard::KEY_NONE
-	KKeyboard::Key m_Key;
-	KKeyboard::Modifiers m_Modifiers;
+	// 割り当てなしの場合は KKey_NONE
+	KKey m_Key;
+	KKeyModifiers m_Modifiers;
 
 public:
 	CKbKeyElm() {
-		m_Key = KKeyboard::KEY_NONE;
-		m_Modifiers = KKeyboard::MODIF_NONE;
+		m_Key = KKey_NONE;
+		m_Modifiers = KKeyModifier_NONE;
 	}
-	CKbKeyElm(KKeyboard::Key key, KKeyboard::Modifiers mod) {
-		K__ASSERT(key != KKeyboard::KEY_NONE);
+	CKbKeyElm(KKey key, KKeyModifiers mod) {
+		K__ASSERT(key != KKey_NONE);
 		m_Key = key;
 		m_Modifiers = mod;
 	}
 
-	virtual KKeyboard::Key get_key() const override {
+	virtual KKey get_key() const override {
 		return m_Key;
 	}
-	virtual void set_key(KKeyboard::Key key) override {
+	virtual void set_key(KKey key) override {
 		m_Key = key;
 	}
-	virtual KKeyboard::Modifiers get_modifiers() const override {
+	virtual KKeyModifiers get_modifiers() const override {
 		return m_Modifiers;
 	}
 	virtual const char * get_key_name() const override {
@@ -89,7 +89,7 @@ public:
 	}
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_KEYBOARD) return false;
-		if (m_Key == KKeyboard::KEY_NONE) return false;
+		if (m_Key == KKey_NONE) return false;
 		if (KKeyboard::isKeyDown(m_Key)) {
 			if (KKeyboard::matchModifiers(m_Modifiers)) {
 				if (val) *val = 1;
@@ -102,38 +102,45 @@ public:
 
 // joystick key
 class CJoyKeyElm: public IJoystickKeyElm {
+	KCoreJoystick *m_Joy;
+
 	// このボタンに割り当てられたジョイスティックボタン。
 	// 割り当てなしの場合は KJoyKey_NONE
-	KJoystick::Button m_JoyBtn;
+	KJoystickButton m_Btn;
 
 public:
-	CJoyKeyElm() {
-		m_JoyBtn = KJoystick::BUTTON_NONE;
+	CJoyKeyElm(KCoreJoystick *joy) {
+		m_Joy = joy;
+		m_Joy->grab();
+		m_Btn = KJoystickButton_NONE;
 	}
-	CJoyKeyElm(KJoystick::Button joybtn) {
-		m_JoyBtn = joybtn;
+	CJoyKeyElm(KCoreJoystick *joy, KJoystickButton btn) {
+		m_Joy = joy;
+		m_Joy->grab();
+		m_Btn = btn;
 	}
-	virtual KJoystick::Button get_button() const override {
-		return m_JoyBtn;
+	virtual ~CJoyKeyElm() {
+		m_Joy->drop();
 	}
-	virtual void set_button(KJoystick::Button btn) override {
-		m_JoyBtn = btn;
+	virtual KJoystickButton get_button() const override {
+		return m_Btn;
+	}
+	virtual void set_button(KJoystickButton btn) override {
+		m_Btn = btn;
 	}
 
 	// IKeyElm
 	virtual bool isConflictWith(const IKeyElm *k) const override {
 		const CJoyKeyElm *obj= dynamic_cast<const CJoyKeyElm *>(k);
-		return obj && obj->m_JoyBtn == m_JoyBtn;
+		return obj && obj->m_Btn == m_Btn;
 	}
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_JOYSTICK) return false;
-		if (m_JoyBtn < 0) return false;
-		for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
-			if (KJoystick::isConnected(i)) {
-				if (KJoystick::getButton(i, m_JoyBtn)) {
-					if (val) *val = 1;
-					return true;
-				}
+		if (m_Btn < 0) return false;
+		if (m_Joy && m_Joy->isConnected()) {
+			if (m_Joy->getButton(m_Btn)) {
+				if (val) *val = 1;
+				return true;
 			}
 		}
 		return false;
@@ -144,14 +151,22 @@ public:
 class CMouseKeyElm: public IKeyElm {
 	// このボタンに割り当てられたマウスボタン。
 	// 割り当てなしの場合は KMouseKey_NONE
-	KMouse::Button m_Btn;
+	KCoreMouse *m_Mouse;
+	KMouseButton m_Btn;
 
 public:
-	CMouseKeyElm() {
-		m_Btn = KMouse::NONE;
+	CMouseKeyElm(KCoreMouse *mouse) {
+		m_Mouse = mouse;
+		m_Mouse->grab();
+		m_Btn = KMouseButton_NONE;
 	}
-	CMouseKeyElm(KMouse::Button btn) {
+	CMouseKeyElm(KCoreMouse *mouse, KMouseButton btn) {
+		m_Mouse = mouse;
+		m_Mouse->grab();
 		m_Btn = btn;
+	}
+	virtual ~CMouseKeyElm() {
+		m_Mouse->drop();
 	}
 
 	// IKeyElm
@@ -162,7 +177,7 @@ public:
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_MOUSE) return false;
 		if (m_Btn < 0) return false;
-		if (KMouse::isButtonDown(m_Btn)) {
+		if (m_Mouse->isButtonDown(m_Btn)) {
 			if (val) *val = 1;
 			return true;
 		}
@@ -172,9 +187,11 @@ public:
 
 // joystick axis
 class CJoyAxisKeyElm: public IKeyElm {
+	KCoreJoystick *m_Joy;
+
 	// このボタンに割り当てられたジョイスティック軸。
 	// 割り当てなしの場合は KJoyAxis_NONE
-	KJoystick::Axis m_Axis;
+	KJoystickAxis m_Axis;
 
 	// このクラスは正負どちらかの入力を使う。
 	// 軸入力は [-1 .. 1] のうち、
@@ -185,15 +202,22 @@ class CJoyAxisKeyElm: public IKeyElm {
 
 	float m_Threshold;
 public:
-	CJoyAxisKeyElm() {
-		m_Axis = KJoystick::AXIS_NONE;
+	CJoyAxisKeyElm(KCoreJoystick *joy) {
+		m_Joy = joy;
+		m_Joy->grab();
+		m_Axis = KJoystickAxis_NONE;
 		m_HalfRange = 0;
 		m_Threshold = 0;
 	}
-	CJoyAxisKeyElm(KJoystick::Axis axis, int halfrange, float threshold) {
+	CJoyAxisKeyElm(KCoreJoystick *joy, KJoystickAxis axis, int halfrange, float threshold) {
+		m_Joy = joy;
+		m_Joy->grab();
 		m_Axis = axis;
 		m_HalfRange = halfrange;
 		m_Threshold = threshold;
+	}
+	virtual ~CJoyAxisKeyElm() {
+		m_Joy->drop();
 	}
 	// IKeyElm
 	virtual bool isConflictWith(const IKeyElm *k) const override {
@@ -202,16 +226,14 @@ public:
 	}
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_JOYSTICK) return false;
-		if (m_Axis == KJoystick::AXIS_NONE) return false;
+		if (m_Axis == KJoystickAxis_NONE) return false;
 
 		// 傾きの絶対値が最も大きい軸の値を得る
 		float axisval = 0.0f;
-		for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
-			if (KJoystick::isConnected(i)) {
-				float val = KJoystick::getAxis(i, m_Axis, m_Threshold);
-				if (fabsf(val) > fabsf(axisval)) {
-					axisval = val;
-				}
+		if (m_Joy && m_Joy->isConnected()) {
+			float val = m_Joy->getAxis(m_Axis, m_Threshold);
+			if (fabsf(val) > fabsf(axisval)) {
+				axisval = val;
 			}
 		}
 		if (m_HalfRange < 0) {
@@ -234,16 +256,24 @@ public:
 
 // joystick pov
 class CJoyPovKeyElm: public IKeyElm {
+	KCoreJoystick *m_Joy;
 	int m_PovX;
 	int m_PovY;
 public:
-	CJoyPovKeyElm() {
+	CJoyPovKeyElm(KCoreJoystick *joy) {
+		m_Joy = joy;
+		m_Joy->grab();
 		m_PovX = 0;
 		m_PovY = 0;
 	}
-	CJoyPovKeyElm(int povX, int povY) {
+	CJoyPovKeyElm(KCoreJoystick *joy, int povX, int povY) {
+		m_Joy = joy;
+		m_Joy->grab();
 		m_PovX = povX;
 		m_PovY = povY;
+	}
+	virtual ~CJoyPovKeyElm() {
+		m_Joy->drop();
 	}
 	// IKeyElm
 	virtual bool isConflictWith(const IKeyElm *k) const override {
@@ -253,25 +283,23 @@ public:
 	virtual bool isPressed(float *val, KPollFlags flags) const override {
 		if (flags & POLLFLAG_NO_JOYSTICK) return false;
 		if (m_PovX == 0 && m_PovY == 0) return false;
-		for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
-			if (KJoystick::isConnected(i)) {
-				int x=0, y=0;
-				if (KJoystick::getPov(i, &x, &y, nullptr)) {
-				#if 1
-					// 設定値と入力値の符号の一致を確認する.
-					// ただし設定値が 0 の場合は常に一致するとみなす
-					bool xmatch = m_PovX ? (x*m_PovX > 0) : true; 
-					bool ymatch = m_PovY ? (y*m_PovY > 0) : true;
-				#else
-					// 設定値と入力値の符号の一致を確認する.
-					// 設定値が 0 の場合、入力値も 0 でないといけない
-					bool xmatch = KMath::signf(x)==KMath::signf(m_PovX);
-					bool ymatch = KMath::signf(y)==KMath::signf(m_PovY);
-				#endif
-					if (xmatch && ymatch) {
-						if (val) *val = 1;
-						return true;
-					}
+		if (m_Joy->isConnected()) {
+			int x=0, y=0;
+			if (m_Joy->getPov(&x, &y, nullptr)) {
+			#if 1
+				// 設定値と入力値の符号の一致を確認する.
+				// ただし設定値が 0 の場合は常に一致するとみなす
+				bool xmatch = m_PovX ? (x*m_PovX > 0) : true; 
+				bool ymatch = m_PovY ? (y*m_PovY > 0) : true;
+			#else
+				// 設定値と入力値の符号の一致を確認する.
+				// 設定値が 0 の場合、入力値も 0 でないといけない
+				bool xmatch = KMath::signf(x)==KMath::signf(m_PovX);
+				bool ymatch = KMath::signf(y)==KMath::signf(m_PovY);
+			#endif
+				if (xmatch && ymatch) {
+					if (val) *val = 1;
+					return true;
 				}
 			}
 		}
@@ -607,18 +635,28 @@ class CButtonMgrImpl: public virtual KRef, public IKeyHistory {
 
 	KPollFlags m_PollFlags;
 
+	KCoreKeyboard *m_KB;
+	KCoreMouse *m_Mouse;
+	KCoreJoystick *m_Joy;
+
 public:
-	CButtonMgrImpl() {
+	CButtonMgrImpl(KCoreKeyboard *kb, KCoreMouse *mouse, KCoreJoystick *joy) {
 		m_HistoryPerFrame.clear();
 		m_HistoryPerPoll.clear();
 		m_Buttons.clear();
 		m_PollFlags = 0;
+		m_KB = kb; K__GRAB(m_KB);
+		m_Mouse = mouse; K__GRAB(m_Mouse);
+		m_Joy = joy; K__GRAB(m_Joy);
 	}
 	virtual ~CButtonMgrImpl() {
 		for (size_t i=0; i<m_Buttons.size(); i++) {
 			m_Buttons[i]->drop();
 		}
 		m_Buttons.clear();
+		K__DROP(m_Mouse);
+		K__DROP(m_Joy);
+		K__DROP(m_KB);
 	}
 
 	#pragma region IKeyHistory inherit
@@ -780,9 +818,9 @@ public:
 
 	// 仮想ボタンにキーボードのキーを割り当てる
 	// @param btn_id アクション識別子
-	// @param key 割り当てるキー (@KKeyboard::KEY_A など)
-	IKeyElm * createKeyboardKey(KKeyboard::Key key, KKeyboard::Modifiers mod) {
-		if (key == KKeyboard::KEY_NONE) {
+	// @param key 割り当てるキー (@KKey_A など)
+	IKeyElm * createKeyboardKey(KKey key, KKeyModifiers mod) {
+		if (key == KKey_NONE) {
 			K__ERROR("invalid key");
 			return nullptr;
 		}
@@ -790,39 +828,43 @@ public:
 	}
 
 	// 仮想ボタンにジョイスティックのキーを割り当てる
-	IKeyElm * createJoystickKey(KJoystick::Button joybtn) {
-		if (!KJoystick::isInit()) {
+	IKeyElm * createJoystickKey(KJoystickButton btn) {
+		if (m_Joy == nullptr) {
 			K__ERROR("no joystick support");
 			return nullptr;
 		}
-		return new CJoyKeyElm(joybtn);
+		return new CJoyKeyElm(m_Joy, btn);
 	}
 
 	// 仮想ボタンにジョイスティックの軸を割り当てる
 	// @param axis 割り当てる軸 (@K_JOYAXIS_X など)
 	// @halfrange  軸入力の正と負のどちらに割り当てるか。-1 か 1 のどちらかを指定する（正負の両方に割り当てることはできない）
-	IKeyElm * createJoystickAxis(KJoystick::Axis axis, int halfrange, float threshold) {
-		if (!KJoystick::isInit()) {
+	IKeyElm * createJoystickAxis(KJoystickAxis axis, int halfrange, float threshold) {
+		if (m_Joy == nullptr) {
 			K__ERROR("no joystick support");
 			return nullptr;
 		}
-		return new CJoyAxisKeyElm(axis, halfrange, threshold);
+		return new CJoyAxisKeyElm(m_Joy, axis, halfrange, threshold);
 	}
 
 	// 仮想ボタンにジョイスティックのハットボタン(POV)を割り当てる
 	// @param xsign ハットボタンの x 符号 (-1, 0, 1)
 	// @param ysign ハットボタンの y 符号 (-1, 0, 1)
 	IKeyElm * createJoystickPov(int xsign, int ysign) {
-		if (!KJoystick::isInit()) {
+		if (m_Joy == nullptr) {
 			K__ERROR("no joystick support");
 			return nullptr;
 		}
-		return new CJoyPovKeyElm(xsign, ysign);
+		return new CJoyPovKeyElm(m_Joy, xsign, ysign);
 	}
 
 	// 仮想ボタンにマウスのキーを割り当てる
-	IKeyElm * createMouseKey(KMouse::Button btn) {
-		return new CMouseKeyElm(btn);
+	IKeyElm * createMouseKey(KMouseButton btn) {
+		if (m_Mouse == nullptr) {
+			K__ERROR("no mouse support");
+			return nullptr;
+		}
+		return new CMouseKeyElm(m_Mouse, btn);
 	}
 
 	// 仮想ボタンにコマンド入力を割り当てる。
@@ -966,10 +1008,8 @@ public:
 	// 入力状態を更新する
 	// newFrame よりも多い回数呼ぶと入力判定の精度が上がる
 	void poll() {
-		if (KJoystick::isInit()) {
-			for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
-				KJoystick::poll(i);
-			}
+		if (m_Joy) {
+			m_Joy->poll();
 		}
 		m_Mutex.lock();
 
@@ -1089,27 +1129,27 @@ private:
 
 #define MAX_KEY_SEQUENCE_LENGTH 8
 
-typedef std::unordered_map<KJoystick::Button, std::string> JOYNAMES;
+typedef std::unordered_map<KJoystickButton, std::string> JOYNAMES;
 
 static JOYNAMES & _GetJoyNames() {
 	static JOYNAMES s_Names;
 	if (s_Names.empty()) {
-		s_Names[KJoystick::BUTTON_1 ] = "Button1";
-		s_Names[KJoystick::BUTTON_2 ] = "Button2";
-		s_Names[KJoystick::BUTTON_3 ] = "Button3";
-		s_Names[KJoystick::BUTTON_4 ] = "Button4";
-		s_Names[KJoystick::BUTTON_5 ] = "Button5";
-		s_Names[KJoystick::BUTTON_6 ] = "Button6";
-		s_Names[KJoystick::BUTTON_7 ] = "Button7";
-		s_Names[KJoystick::BUTTON_8 ] = "Button8";
-		s_Names[KJoystick::BUTTON_9 ] = "Button9";
-		s_Names[KJoystick::BUTTON_10] = "Button10";
-		s_Names[KJoystick::BUTTON_11] = "Button11";
-		s_Names[KJoystick::BUTTON_12] = "Button12";
-		s_Names[KJoystick::BUTTON_13] = "Button13";
-		s_Names[KJoystick::BUTTON_14] = "Button14";
-		s_Names[KJoystick::BUTTON_15] = "Button15";
-		s_Names[KJoystick::BUTTON_16] = "Button16";
+		s_Names[KJoystickButton_1 ] = "Button1";
+		s_Names[KJoystickButton_2 ] = "Button2";
+		s_Names[KJoystickButton_3 ] = "Button3";
+		s_Names[KJoystickButton_4 ] = "Button4";
+		s_Names[KJoystickButton_5 ] = "Button5";
+		s_Names[KJoystickButton_6 ] = "Button6";
+		s_Names[KJoystickButton_7 ] = "Button7";
+		s_Names[KJoystickButton_8 ] = "Button8";
+		s_Names[KJoystickButton_9 ] = "Button9";
+		s_Names[KJoystickButton_10] = "Button10";
+		s_Names[KJoystickButton_11] = "Button11";
+		s_Names[KJoystickButton_12] = "Button12";
+		s_Names[KJoystickButton_13] = "Button13";
+		s_Names[KJoystickButton_14] = "Button14";
+		s_Names[KJoystickButton_15] = "Button15";
+		s_Names[KJoystickButton_16] = "Button16";
 	}
 	return s_Names;
 }
@@ -1406,18 +1446,27 @@ void CNodeController::tickInput() {
 class CInputMap: public KManager, public KInspectorCallback {
 	CButtonMgrImpl *m_GameButtons; // ゲーム内入力用のボタンマネージャ
 	CButtonMgrImpl *m_AppButtons; // アプリ操作用のボタンマネージャ
+	KCoreKeyboard *m_KB;
+	KCoreMouse *m_Mouse;
+	KCoreJoystick *m_Joy;
 public:
 	KCompNodes<CNodeController> m_Nodes;
 
-	CInputMap() {
-		m_GameButtons = new CButtonMgrImpl();
-		m_AppButtons = new CButtonMgrImpl();
+	CInputMap(KCoreKeyboard *kb, KCoreMouse *ms, KCoreJoystick *js) {
+		m_KB = kb;    K__GRAB(m_KB);
+		m_Mouse = ms; K__GRAB(m_Mouse);
+		m_Joy = js;   K__GRAB(m_Joy);
+		m_GameButtons = new CButtonMgrImpl(m_KB, m_Mouse, m_Joy);
+		m_AppButtons = new CButtonMgrImpl(m_KB, m_Mouse, m_Joy);
 		KEngine::addManager(this);
 		KEngine::addInspectorCallback(this, u8"入力"); // KInspectorCallback
 	}
 	virtual ~CInputMap() {
 		K__DROP(m_GameButtons);
 		K__DROP(m_AppButtons);
+		K__DROP(m_Joy);
+		K__DROP(m_KB);
+		K__DROP(m_Mouse);
 	}
 	virtual void onInspectorGui() override { // KInspectorCallback
 		ImGui::Text("App buttons");
@@ -1543,14 +1592,14 @@ public:
 			}
 		}
 	}
-	void bindAppKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods) {
+	void bindAppKey(const std::string &button, KKey key, KKeyModifiers mods) {
 		IKeyElm *elm = m_AppButtons->createKeyboardKey(key, mods);
 		if (elm) {
 			m_AppButtons->bindKey(button, elm);
 			elm->drop();
 		}
 	}
-	void bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, const std::string &tag) {
+	void bindKeyboardKey(const std::string &button, KKey key, KKeyModifiers mods, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createKeyboardKey(key, mods);
 		if (elm) {
 			elm->setTag(tag);
@@ -1558,7 +1607,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindJoystickKey(const std::string &button, KJoystick::Button joybtn, const std::string &tag) {
+	void bindJoystickKey(const std::string &button, KJoystickButton joybtn, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createJoystickKey(joybtn);
 		if (elm) {
 			elm->setTag(tag);
@@ -1566,7 +1615,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, const std::string &tag, float threshold) {
+	void bindJoystickAxis(const std::string &button, KJoystickAxis axis, int halfrange, const std::string &tag, float threshold) {
 		IKeyElm *elm = m_GameButtons->createJoystickAxis(axis, halfrange, threshold);
 		if (elm) {
 			elm->setTag(tag);
@@ -1582,7 +1631,7 @@ public:
 			elm->drop();
 		}
 	}
-	void bindMouseKey(const std::string &button, KMouse::Button mouse_btn, const std::string &tag) {
+	void bindMouseKey(const std::string &button, KMouseButton mouse_btn, const std::string &tag) {
 		IKeyElm *elm = m_GameButtons->createMouseKey(mouse_btn);
 		if (elm) {
 			elm->setTag(tag);
@@ -1630,13 +1679,13 @@ public:
 	}
 	void resetAllButtonStates() {
 	}
-	std::string getJoystickName(KJoystick::Button btn) const {
+	std::string getJoystickName(KJoystickButton btn) const {
 		return _GetJoyNames()[btn];
 	}
-	std::string getKeyboardName(KKeyboard::Key key) const {
+	std::string getKeyboardName(KKey key) const {
 		return KKeyboard::getKeyName(key); 
 	}
-	bool getJoystickFromName(const std::string &s, KJoystick::Button *btn) const {
+	bool getJoystickFromName(const std::string &s, KJoystickButton *btn) const {
 		const JOYNAMES &names = _GetJoyNames();
 		for (auto it=names.begin(); it!=names.end(); ++it) {
 			if (it->second.compare(s) == 0) {
@@ -1646,9 +1695,9 @@ public:
 		}
 		return false;
 	}
-	bool getKeyboardFromName(const std::string &s, KKeyboard::Key *key) const {
-		KKeyboard::Key k = KKeyboard::findKeyByName(s.c_str());
-		if (k != KKeyboard::KEY_NONE) {
+	bool getKeyboardFromName(const std::string &s, KKey *key) const {
+		KKey k = KKeyboard::findKeyByName(s.c_str());
+		if (k != KKey_NONE) {
 			if (key) *key = k;
 			return true;
 		}
@@ -1659,9 +1708,9 @@ public:
 #pragma region KInputMap
 static CInputMap *g_InputMap = nullptr;
 
-void KInputMap::install() {
+void KInputMap::install(KCoreKeyboard *kb, KCoreMouse *ms, KCoreJoystick *js) {
 	K__ASSERT(g_InputMap == nullptr);
-	g_InputMap = new CInputMap();
+	g_InputMap = new CInputMap(kb, ms, js);
 }
 void KInputMap::uninstall() {
 	if (g_InputMap) {
@@ -1740,7 +1789,7 @@ void KInputMap::postButtonDown(const std::string &button) {
 
 
 /// addAppButton で登録した仮想ボタンに対してキーボードのキーをバインドする
-void KInputMap::bindAppKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods) {
+void KInputMap::bindAppKey(const std::string &button, KKey key, KKeyModifiers mods) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindAppKey(button, key, mods);
 }
@@ -1749,18 +1798,18 @@ void KInputMap::bindAppKey(const std::string &button, KKeyboard::Key key, KKeybo
 /// @note tag に適当な整数値を指定した場合、後でその値を検索キーとして特定のキーバインドを探すことができる。
 /// /
 /// @see unbindByTag, findKeyboardByTag, findJoystickByTag
-void KInputMap::bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods, const std::string &tag) {
+void KInputMap::bindKeyboardKey(const std::string &button, KKey key, KKeyModifiers mods, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindKeyboardKey(button, key, mods, tag);
 }
-void KInputMap::bindJoystickKey(const std::string &button, KJoystick::Button joybtn, const std::string &tag) {
+void KInputMap::bindJoystickKey(const std::string &button, KJoystickButton joybtn, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindJoystickKey(button, joybtn, tag);
 }
 
 /// addButton で登録した仮想ボタンに対してジョイスティックの軸をバインドする
 /// ※軸の負方向または正方向のどちらかにしか割り当てられない。正負のどちらに割り当てるかを halfrange に -1 または 1 で指定する
-void KInputMap::bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, const std::string &tag, float threshold) {
+void KInputMap::bindJoystickAxis(const std::string &button, KJoystickAxis axis, int halfrange, const std::string &tag, float threshold) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindJoystickAxis(button, axis, halfrange, tag, threshold);
 }
@@ -1769,7 +1818,7 @@ void KInputMap::bindJoystickPov(const std::string &button, int xsign, int ysign,
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindJoystickPov(button, xsign, ysign, tag);
 }
-void KInputMap::bindMouseKey(const std::string &button, KMouse::Button mousebtn, const std::string &tag) {
+void KInputMap::bindMouseKey(const std::string &button, KMouseButton mousebtn, const std::string &tag) {
 	K__ASSERT(g_InputMap);
 	g_InputMap->bindMouseKey(button, mousebtn, tag);
 }
@@ -1797,19 +1846,19 @@ IJoystickKeyElm * KInputMap::findJoystickByTag(const std::string &button, const 
 	K__ASSERT(g_InputMap);
 	return g_InputMap->findJoystickByTag(button, tag);
 }
-std::string KInputMap::getJoystickName(KJoystick::Button joybtn) {
+std::string KInputMap::getJoystickName(KJoystickButton joybtn) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->getJoystickName(joybtn);
 }
-std::string KInputMap::getKeyboardName(KKeyboard::Key key) {
+std::string KInputMap::getKeyboardName(KKey key) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->getKeyboardName(key);
 }
-bool KInputMap::getKeyboardFromName(const std::string &s, KKeyboard::Key *key) {
+bool KInputMap::getKeyboardFromName(const std::string &s, KKey *key) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->getKeyboardFromName(s, key);
 }
-bool KInputMap::getJoystickFromName(const std::string &s, KJoystick::Button *btn) {
+bool KInputMap::getJoystickFromName(const std::string &s, KJoystickButton *btn) {
 	K__ASSERT(g_InputMap);
 	return g_InputMap->getJoystickFromName(s, btn);
 }

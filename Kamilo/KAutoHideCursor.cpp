@@ -22,7 +22,7 @@ public:
 			uint32_t diff = K::clockMsec32() - m_Time;
 			if (diff >= 3 * 1000) {
 				m_Hiding = true;
-				KWindow::command("hide_cursor", NULL);
+				KEngine::getWindow()->command("hide_cursor", NULL);
 			}
 		}
 	}
@@ -31,7 +31,7 @@ public:
 			m_Time = K::clockMsec32();
 			if (m_Hiding) {
 				m_Hiding = false;
-				KWindow::command("show_cursor", NULL);
+				KEngine::getWindow()->command("show_cursor", NULL);
 			}
 			return;
 		}

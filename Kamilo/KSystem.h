@@ -1,5 +1,17 @@
 ﻿#pragma once
+#include <string>
+
+
 namespace Kamilo {
+
+class KLogger;
+
+struct KUserAppDesc {
+	std::string name;     // アプリケーション名(UTF8)
+	std::string edition;  // エディション名（「体験版」「通常」「Steam版」など）
+	std::string version;  // バージョン（「1.0」「2.0」など、公開用の大まかなバージョン）
+	std::string internal_version; // 内部バージョン（ビルド番号などの詳細バージョン）
+};
 
 class KSystem {
 public:
@@ -66,6 +78,7 @@ public:
 
 	static bool getString(StrProp id, char *out_u8, int size);
 	static int getInt(IntProp id);
+	static void printInfo(KLogger *log, const KUserAppDesc *desc=nullptr);
 };
 
 } // namespace

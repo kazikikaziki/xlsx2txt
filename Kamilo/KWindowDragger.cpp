@@ -40,10 +40,10 @@ public:
 				m_dragging = true;
 				// ウィンドウ左上からのオフセットを入れる
 				int wnd_x, wnd_y;
-				KWindow::getWindowPosition(&wnd_x, &wnd_y);
+				KEngine::getWindow()->getWindowPosition(&wnd_x, &wnd_y);
 				int x = sig.getInt("x");
 				int y = sig.getInt("y");
-				KWindow::clientToScreen(&x, &y);
+				KEngine::getWindow()->clientToScreen(&x, &y);
 				m_grab_x = x - wnd_x;
 				m_grab_y = y - wnd_y;
 			}
@@ -59,11 +59,11 @@ public:
 				if (isDragOK(btn)) {
 					int x = sig.getInt("x");
 					int y = sig.getInt("y");
-					KWindow::clientToScreen(&x, &y);
+					KEngine::getWindow()->clientToScreen(&x, &y);
 					// このクライアント座標に対応する
 					int wnd_x = x - m_grab_x;
 					int wnd_y = y - m_grab_y;
-					KEngine::moveWindow(wnd_x, wnd_y);
+					KEngine::moveWindow(wnd_x, wnd_y); // KEngine::getWindow()->setWindowPosition は使わない。フルスクリーンの時にウィンドウ移動しないように、KEngine を通す
 				} else {
 					m_dragging = false;
 				}

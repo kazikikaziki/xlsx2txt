@@ -1,23 +1,29 @@
 ﻿#pragma once
 #include <string>
 #include <memory>
+#include <unordered_map>
+#include "KDataGrid.h"
 
 namespace Kamilo {
 
 class KInputStream;
 class KOutputStream;
+class CCoreExcelReader; // internal class
+class CCoreExcelReader2; // internal class
 
-/// セル巡回用のコールバック
-class KExcelScanCellsCallback {
+
+class KXlsxFile {
 public:
-	/// セル巡回時に呼ばれる
-	/// col 列番号（Excelの画面とは異なり、0起算であることに注意）
-	/// row 行番号（Excelの画面とは異なり、0起算であることに注意）
-	/// s セルの文字列(UTF8)
-	virtual void onCell(int col, int row, const char *s) = 0;
+	/// .XLSX ファイルをロードする
+	static bool loadFromStream(KInputStream &file, const std::string &xlsx_name, std::vector<KDataGrid> &result);
+	static bool loadFromFileName(const std::string &filename, std::vector<KDataGrid> &result);
+	static bool loadFromMemory(const void *bin, size_t size, const std::string &name, std::vector<KDataGrid> &result);
 };
 
-class CCoreExcelReader; // internal class
+
+
+
+
 
 class KExcelFile {
 public:
@@ -64,7 +70,7 @@ public:
 	/// col: 列番号（ゼロ起算）
 	/// row: 行番号（ゼロ起算）
 	/// retval: utf8文字列またはnullptr
-	const char * getDataString(int sheet, int col, int row) const;
+	std::string getDataString(int sheet, int col, int row) const;
 
 	/// 文字列を完全一致で検索する。みつかったらセルの行列番号を row, col にセットして true を返す
 	/// 空文字列を検索することはできない。
@@ -75,14 +81,22 @@ public:
 	/// 全てのセルを巡回する
 	/// sheet   : シート番号（ゼロ起算）
 	/// cb      : セル巡回時に呼ばれるコールバックオブジェクト
-	void scanCells(int sheet, KExcelScanCellsCallback *cb) const;
+	void scanCells(int sheet, KDataGridCallback *cb) const;
 	
 	/// セル文字列を XML 形式でエクスポートする
 	std::string exportXmlString(bool with_header=true, bool with_comment=true);
 	std::string exportText();
 
+	const std::vector<KDataGrid> & getSheets() const;
+	const KDataGrid & getSheet(int i) const;
+	const KDataGrid * findSheet(const std::string &name) const;
+
 private:
+#if 0
 	std::shared_ptr<CCoreExcelReader> m_Impl;
+#else
+	std::shared_ptr<CCoreExcelReader2> m_Impl;
+#endif
 };
 
 

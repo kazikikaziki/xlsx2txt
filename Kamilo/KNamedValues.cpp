@@ -76,7 +76,7 @@ bool KNamedValues::loadFromString(const std::string &xml_u8, const std::string &
 		result = loadFromXml(xml->getChild(0), false);
 		xml->drop();
 	} else {
-		KLog::printError("E_XML: Failed to load: %s", filename);
+		K__ERROR("E_XML: Failed to load: %s", filename);
 	}
 	return result;
 }

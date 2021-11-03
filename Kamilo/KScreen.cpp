@@ -439,7 +439,7 @@ public:
 				filename = DEFAULT_SNAPSHOT_FILENAME;
 			}
 			save_texture(m_pass_tex[0], filename.u8());
-			KLog::printInfo("Snapshot saved: %s", filename.getFullPath().u8());
+			K__PRINT("Snapshot saved: %s", filename.getFullPath().u8());
 			m_export_screen_texture = false;
 		}
 	}

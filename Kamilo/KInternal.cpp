@@ -47,7 +47,7 @@ static std::wstring _ToWin32PathW(const std::string &path_u8) {
 	return ws;
 }
 static std::string _FromWin32PathW(const std::wstring &wpath) {
-	// windows形式のパスに変換する
+	// windows形式のパスから変換する
 	std::string s = K::strWideToUtf8(wpath);
 	K::strReplaceChar(s, K__PATH_BACKSLASH, K__PATH_SLASH);
 	return s;
@@ -75,6 +75,18 @@ void K::_exit() {
 bool K::_IsDebuggerPresent() {
 	return ::IsDebuggerPresent();
 }
+
+void K::printf_u8(const char *fmt_u8, ...) {
+	char u[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u, sizeof(u), fmt_u8, args);
+	va_end(args);
+
+	std::string s = K::strUtf8ToAnsi(u, "");
+	printf("%s", s.c_str());
+}
+
 #pragma endregion // debug
 
 
@@ -136,21 +148,21 @@ void K::win32_FreeConsole() {
 
 
 #pragma region output debug string
-_StrW::_StrW() {
+K_StrW::K_StrW() {
 }
-_StrW::_StrW(int x) {
+K_StrW::K_StrW(int x) {
 	ws = std::to_wstring(x);
 }
-_StrW::_StrW(float x) {
+K_StrW::K_StrW(float x) {
 	ws = std::to_wstring(x);
 }
-_StrW::_StrW(const char *u8) {
+K_StrW::K_StrW(const char *u8) {
 	ws = K::strUtf8ToWide(u8);
 }
-_StrW::_StrW(const std::string &u8) {
+K_StrW::K_StrW(const std::string &u8) {
 	ws = K::strUtf8ToWide(u8);
 }
-_StrW::_StrW(const std::wstring &x) {
+K_StrW::K_StrW(const std::wstring &x) {
 	ws = x;
 }
 
@@ -169,7 +181,7 @@ void K::outputDebugStringW(const std::wstring &ws) {
 	::OutputDebugStringW(ws.c_str());
 	::OutputDebugStringW(L"\n");
 }
-void K::outputDebugFmt(const char *fmt_u8, ...) {
+void K::outputDebugStringFmt(const char *fmt_u8, ...) {
 	char s[OUTPUT_STRING_SIZE] = {0};
 	va_list args;
 	va_start(args, fmt_u8);
@@ -230,6 +242,53 @@ void K::setWarningHook(void (*hook)(const char *u8)) {
 void K::setErrorHook(void (*hook)(const char *u8)) {
 	g_ErrorHook = hook;
 }
+
+void K::error2(const char *file_u8, int line, const char *fmt_u8, ...) {
+	char u8[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u8, sizeof(u8), fmt_u8, args);
+	va_end(args);
+
+	std::string file = K::pathGetLast(file_u8);
+	file = K::pathRenameExtension(file, "");
+	K::error("%s(%d): %s", file.c_str(), line, u8);
+}
+void K::warning2(const char *file_u8, int line, const char *fmt_u8, ...) {
+	char u8[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u8, sizeof(u8), fmt_u8, args);
+	va_end(args);
+
+	std::string file = K::pathGetLast(file_u8);
+	file = K::pathRenameExtension(file, "");
+	K::warning("%s(%d): %s", file.c_str(), line, u8);
+}
+void K::verbose2(const char *file_u8, int line, const char *fmt_u8, ...) {
+	char u8[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u8, sizeof(u8), fmt_u8, args);
+	va_end(args);
+
+	std::string file = K::pathGetLast(file_u8);
+	file = K::pathRenameExtension(file, "");
+	K::verbose("%s(%d): %s", file.c_str(), line, u8);
+}
+void K::print2(const char *file_u8, int line, const char *fmt_u8, ...) {
+	char u8[OUTPUT_STRING_SIZE] = {0};
+	va_list args;
+	va_start(args, fmt_u8);
+	vsnprintf(u8, sizeof(u8), fmt_u8, args);
+	va_end(args);
+
+	std::string file = K::pathGetLast(file_u8);
+	file = K::pathRenameExtension(file, "");
+	K::print("%s(%d): %s", file.c_str(), line, u8);
+}
+
+
 void K::print(const char *fmt_u8, ...) {
 	static int s_RecursiveGuard = 0; // 再帰呼び出し防止
 
@@ -467,13 +526,13 @@ float K::lerp(float a, float b, float t) {
 
 #pragma region file
 bool K::fileShellOpen(const std::string &path_u8) {
-	std::wstring wpath = strUtf8ToWide(path_u8);
+	std::wstring wpath = _ToWin32PathW(path_u8);
 	int h = (int)::ShellExecuteW(nullptr, L"OPEN", wpath.c_str(), L"", L"", SW_SHOW);
 	return h > 32; // ShellExecute は成功すると 32 より大きい値を返す
 }
 FILE * K::fileOpen(const std::string &path_u8, const std::string &mode_u8) {
 	// fopen の UTF8 版
-	std::wstring wpath = strUtf8ToWide(path_u8);
+	std::wstring wpath = _ToWin32PathW(path_u8);
 	std::wstring wmode = strUtf8ToWide(mode_u8);
 	FILE *file = nullptr;
 	if (1) {
@@ -481,7 +540,7 @@ FILE * K::fileOpen(const std::string &path_u8, const std::string &mode_u8) {
 		// 読み取りモードで開く場合は、他のアプリが対象ファイルを開いていても成功する
 		file = ::_wfopen(wpath.c_str(), wmode.c_str());
 		if (file == nullptr) {
-			K::outputDebug("*** Failed to open file \"", path_u8, "\"");
+			K::outputDebugString("*** Failed to open file \"", path_u8, "\"");
 		}
 	} else {
 		errno_t err = ::_wfopen_s(&file, wpath.c_str(), wmode.c_str());
@@ -489,11 +548,11 @@ FILE * K::fileOpen(const std::string &path_u8, const std::string &mode_u8) {
 		// https://docs.microsoft.com/ja-jp/cpp/c-runtime-library/errno-constants?view=msvc-160
 		if (err == ENOENT) {
 			// 指定された名前のファイルが存在しない
-			K::outputDebug("*** No file named \"", path_u8, "\"");
+			K::outputDebugString("*** No file named \"", path_u8, "\"");
 		}
 		if (err == EACCES) {
 			// 指定されたモードでアクセスできない (_wfopen だと成功するかも）
-			K::outputDebug("*** Permission denied \"", path_u8, "\"");
+			K::outputDebugString("*** Permission denied \"", path_u8, "\"");
 		}
 	}
 	return file;
@@ -946,6 +1005,7 @@ std::string K::sysGetCurrentDir() {
 /// @see https://linuxjm.osdn.jp/html/LDP_man-pages/man2/chdir.2.html
 bool K::sysSetCurrentDir(const std::string &dir) {
 	std::wstring wdir = _ToWin32PathW(dir);
+	K::outputDebugStringW(L"Change current directory: \"" + wdir + L"\"");
 	if (::SetCurrentDirectoryW(wdir.c_str())) {
 		return true; // OK
 	} else {
@@ -1011,7 +1071,14 @@ std::string K::pathJoin(const std::string &s1, const std::string &s2) {
 	}
 	return ret;
 }
+std::string K::pathJoinFmt(const std::string &path1, const char *path2_fmt, ...) {
+	va_list args;
+	va_start(args, path2_fmt);
+	std::string path2 = str_vsprintf(path2_fmt, args);
+	va_end(args);
 
+	return pathJoin(path1, path2);
+}
 
 std::string K::pathRemoveLastDelim(const std::string &path) {
 	std::string s = path;
@@ -1543,6 +1610,8 @@ void K::strTrim(std::string &s) {
 		s.pop_back();
 	}
 }
+
+// s に文字列 more を連結する。必要に応じて区切り単語 sep を追加する
 void K::strJoin(std::string &s, const std::string &more, const std::string &sep) {
 	if (s.empty()) {
 		s = more;
@@ -1551,9 +1620,7 @@ void K::strJoin(std::string &s, const std::string &more, const std::string &sep)
 	if (more.empty()) {
 		return;
 	}
-	if (!sep.empty()) {
-		s += sep;
-	}
+	s += sep;
 	s += more;
 }
 std::string K::strJoin(const std::vector<std::string> &strings, const std::string &sep, bool skip_empty) {
@@ -1600,6 +1667,29 @@ std::string K::strUnquoted(const std::string &s) {
 	K::strReplace(t, QUOTE2_STR, QUOTE1_STR);
 
 	return t;
+}
+
+void K::strSplitLeft(const std::string &s, const std::string &delims, std::string *p_left, std::string *p_right) {
+	int pos = -1;
+	for (int i=0; i<s.size(); i++) {
+		if (delims.find(s[i]) != std::string::npos) {
+			pos = i;
+			break;
+		}
+	}
+	if (pos >= 0) {
+		std::string l = s.substr(0, pos);
+		std::string r = s.substr(pos + 1);
+		K::strTrim(l);
+		K::strTrim(r);
+		if (p_left)  *p_left  = l;
+		if (p_right) *p_right = r;
+	} else {
+		std::string l = s.substr(0, pos);
+		K::strTrim(l);
+		if (p_left)  *p_left  = l;
+		if (p_right) *p_right = "";
+	}
 }
 
 std::string K::strGetLeft(const std::string &s, const std::string &separator_substr, bool empty_if_no_separator, bool trim) {
@@ -1990,7 +2080,7 @@ std::wstring K::strUtf8ToWide(const std::string &u8) {
 	std::wstring ws;
 	int len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, nullptr, 0);
 	if (len == 0) {
-		outputDebugFmt("!!!! Failed to convert UTF8 string into WideChar (%d bytes string)", u8.size());
+		outputDebugStringFmt("!!!! Failed to convert UTF8 string into WideChar (%d bytes string)", u8.size());
 		K__Break();
 		{
 			// エラーを無視して変換してみる
@@ -2519,7 +2609,7 @@ void Test_internal_path() {
 			} else {
 				s = "  ";
 			}
-			K::outputDebug(s, path);
+			K::outputDebugString(s, path);
 		}
 	}
 }

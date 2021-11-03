@@ -62,6 +62,16 @@ static bool _LoadTinyXml(const std::string &xlmtext_u8, const std::string &debug
 	}
 }
 
+static bool _IsXmlTextOK(const char *s) {
+	for (const char *it=s; *it!='\0'; it++) {
+		char c = *it;
+		if (strchr("<>\"\'", c)) { // c はXMLのテキストや値として使ってはいけない文字か？
+			return false;
+		}
+	}
+	return true;
+}
+
 class CXNode: public KXmlElement {
 	typedef std::pair<std::string, std::string> PairStrStr;
 	std::string m_Tag;
@@ -323,19 +333,22 @@ bool KXmlElement::write(KOutputStream &output, int indent) const {
 	return true;
 #endif
 }
+
 std::string KXmlElement::toString(int indent) const {
 	std::string s;
 
 	if (indent < 0) indent = 0;
-	// Tag
-	s += K::str_sprintf("%*s<%s", indent*2, "", getTag());
+
+	std::string indent_str = std::string(indent*2, ' ');
+	const char *spaces = indent_str.c_str();
 
 	// Attr
+	std::string attrs;
 	for (int i=0; i<getAttrCount(); i++) {
 		const char *k = getAttrName(i);
 		const char *v = getAttrValue(i);
 		if (k && k[0] && v) {
-			s += K::str_sprintf(" %s=\"%s\"", k, v);
+			attrs += K::str_sprintf(" %s=\"%s\"", k, v);
 		}
 	}
 
@@ -345,15 +358,22 @@ std::string KXmlElement::toString(int indent) const {
 		// Text
 		const char *text = getText();
 		if (text && text[0]) {
-			s += ">\n"; // タグ閉じる
+			s += K::str_sprintf("%s<%s%s>", spaces, getTag(), attrs.c_str());
+			if (strlen(text) < 256 && _IsXmlTextOK(text)) {
+				s += text;
+				s += K::str_sprintf("</%s>\n", getTag());
 
-			// CDATA部
-			s += "<![CDATA[";
-			s += text;
-			s += "]]>\n";
-			s += K::str_sprintf("%*s</%s>\n", indent*2, "", getTag());
+			} else {
+				// 使用禁止文字を含んでいるか、長い文字列だった場合は CDATA を使う
+				// CDATA部
+				s += "\n";
+				s += K::str_sprintf("%s<![CDATA[", spaces); // CDATAの始まりではインデント考慮する
+				s += text;
+				s += "]]>\n";
+				s += K::str_sprintf("%s</%s>\n", spaces, getTag());
+			}
 		} else {
-			s += "/>\n"; // タグ閉じる
+			s += K::str_sprintf("%s<%s%s/>\n", spaces, getTag(), attrs.c_str());
 		}
 
 	} else {
@@ -363,11 +383,11 @@ std::string KXmlElement::toString(int indent) const {
 			K__ERROR(u8"Xml element cannot have both Text Element and Child Elements");
 
 		} else {
-			s += ">\n";
+			s += K::str_sprintf("%s<%s%s>\n", spaces, getTag(), attrs.c_str());
 			for (int i=0; i<getChildCount(); i++) {
 				s += getChild(i)->toString(indent+1);
 			}
-			s += K::str_sprintf("%*s</%s>\n", indent*2, "", getTag());
+			s += K::str_sprintf("%s</%s>\n", spaces, getTag());
 		}
 	}
 	return s;
@@ -395,21 +415,33 @@ const char * KXmlElement::getAttrString(const char *name, const char *def) const
 	}
 	return s;
 }
-float KXmlElement::getAttrFloat(const char *name, float def) const {
+bool KXmlElement::queryAttrFloat(const char *name, float *p_value) const {
 	const char *s = getAttrString(name);
-	if (s == nullptr) return def;
+	if (s == nullptr) return false;
 	char *err = 0;
-	float result = strtof(s, &err);
-	if (err==s || err[0]) return def;
-	return result;
+	float val = strtof(s, &err);
+	if (err==s || err[0]) return false;
+	if (p_value) *p_value = val;
+	return true;
+}
+float KXmlElement::getAttrFloat(const char *name, float def) const {
+	float val = def;
+	queryAttrFloat(name, &val);
+	return val;
+}
+bool KXmlElement::queryAttrInt(const char *name, int *p_value) const {
+	const char *s = getAttrString(name);
+	if (s == nullptr) return false;
+	char *err = 0;
+	float val = strtof(s, &err);
+	if (err==s || err[0]) return false;
+	if (p_value) *p_value = val;
+	return true;
 }
 int KXmlElement::getAttrInt(const char *name, int def) const {
-	const char *s = getAttrString(name);
-	if (s == nullptr) return def;
-	char *err = 0;
-	int result = strtol(s, &err, 0);
-	if (err==s || *err) return def;
-	return result;
+	int val = def;
+	queryAttrInt(name, &val);
+	return val;
 }
 int KXmlElement::findAttrByName(const char *name, int start) const {
 	if (name && name[0]) {

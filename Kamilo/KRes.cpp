@@ -9,13 +9,15 @@
 #include "KDirectoryWalker.h"
 #include "KSig.h"
 
-#define INVALID_OPERATION    KLog::printWarning("INVALID_OPERATION at %s(%d): %s", __FILE__, __LINE__, __FUNCTION__)
+#define INVALID_OPERATION    K__WARNING("INVALID_OPERATION at %s(%d): %s", __FILE__, __LINE__, __FUNCTION__)
 
 #if defined(_DEBUG) && 0
 #	define K_DEBUG_IMAGE_FILTER 1
 #else
 #	define K_DEBUG_IMAGE_FILTER 0
 #endif
+
+
 
 namespace Kamilo {
 
@@ -197,7 +199,7 @@ static void _MeshSaveToFile(const KMesh *mesh, KOutputStream &output) {
 				s += "\t</TriangleFan>\n";
 				break;
 			default:
-				KLog::printError("NOT SUPPORTED");
+				K__ERROR("NOT SUPPORTED");
 				break;
 			}
 			if (1) {
@@ -245,7 +247,7 @@ static bool _MeshSaveToFileName(const KMesh *mesh, const KPath &filename) {
 		_MeshSaveToFile(mesh, file);
 		return true;
 	} else {
-		KLog::printError("_MeshSaveToFileName: file can not be opened");
+		K__ERROR("_MeshSaveToFileName: file can not be opened");
 		return false;
 	}
 }
@@ -828,7 +830,7 @@ bool KClipRes::getNextPage(int page, int mark, std::string *p_new_clip, int *p_n
 			*p_new_page = idx;
 			return true;
 		}
-		KLog::printWarning("W_ANI: No any pages marked '%d'", idx); // マークが見つからない
+		K__WARNING("W_ANI: No any pages marked '%d'", idx); // マークが見つからない
 	}
 
 	// 行先指定なし
@@ -901,7 +903,7 @@ bool KShaderRes::loadFromHLSL(const char *name, const char *code) {
 	const char *unbom_code = K::strSkipBom(code);
 	KSHADERID sh = KVideo::createShaderFromHLSL(unbom_code, name);
 	if (sh == nullptr) {
-		KLog::printError("E_SHADER: failed to build HLSL shader.");
+		K__ERROR("E_SHADER: failed to build HLSL shader.");
 		return false;
 	}
 	m_ShaderId = sh;
@@ -1185,9 +1187,9 @@ public:
 				}
 			}
 			if (probably.empty()) {
-				KLog::printError(u8"E_TEX: テクスチャ '%s' はロードされていません. xres のロード忘れ、 xres 内での定義忘れ、KTextureBank::addTexture での登録忘れの可能性があります", name.u8());
+				K__ERROR(u8"E_TEX: テクスチャ '%s' はロードされていません. xres のロード忘れ、 xres 内での定義忘れ、KTextureBank::addTexture での登録忘れの可能性があります", name.u8());
 			} else {
-				KLog::printError(u8"E_TEX: テクスチャ '%s' はロードされていません。もしかして: '%s'", name.u8(), probably.c_str());
+				K__ERROR(u8"E_TEX: テクスチャ '%s' はロードされていません。もしかして: '%s'", name.u8(), probably.c_str());
 			}
 		}
 		m_Mutex.unlock();
@@ -1282,7 +1284,7 @@ public:
 	}
 	virtual KTEXID addRenderTexture(const KPath &name, int w, int h, Flags flags) override {
 		if (name.empty() || w <= 0 || h <= 0) {
-			KLog::printError("E_TEXTUREBANK: Invalid argument at addRenderTexture");
+			K__ERROR("E_TEXTUREBANK: Invalid argument at addRenderTexture");
 			return nullptr;
 		}
 
@@ -1292,7 +1294,7 @@ public:
 			{
 				// 同名のテクスチャが存在する場合には無条件で上書きする
 				if (m_Items.find(name.u8()) != m_Items.end()) {
-					KLog::printWarning("W_TEXTURE_OVERWRITE: Texture named '%s' already exists. The texture is overritten by new one", name.u8());
+					K__WARNING("W_TEXTURE_OVERWRITE: Texture named '%s' already exists. The texture is overritten by new one", name.u8());
 					removeTexture(name);
 				}
 				texres.make();
@@ -1355,7 +1357,7 @@ public:
 					
 					} else {
 						// 使いまわしできない
-						KLog::printError("incompatible texture found (type not matched): '%s'", name.u8());
+						K__ERROR("incompatible texture found (type not matched): '%s'", name.u8());
 					}
 
 				} else if (oldres->m_Width != w || oldres->m_Height != h) {
@@ -1381,7 +1383,7 @@ public:
 
 					} else {
 						// 使いまわしできない
-						KLog::printError("incompatible texture found (size not matched): '%s'", name.u8());
+						K__ERROR("incompatible texture found (size not matched): '%s'", name.u8());
 					}
 
 				} else {
@@ -1397,11 +1399,11 @@ public:
 	}
 	virtual KTEXID addTextureFromSize(const KPath &name, int w, int h) override {
 		if (name.empty()) {
-			KLog::printError("E_TEXBANK: Texture name is empty");
+			K__ERROR("E_TEXBANK: Texture name is empty");
 			return nullptr;
 		}
 		if (w <= 0 || h <= 0) {
-			KLog::printError("E_TEXBANK: Invalid texture size: %dx%d", w, h);
+			K__ERROR("E_TEXBANK: Invalid texture size: %dx%d", w, h);
 			return nullptr;
 		}
 		KTEXID tex = nullptr;
@@ -1411,10 +1413,10 @@ public:
 			KAutoRef<KTextureRes> &texres = it->second;
 			if (texres->m_IsRenderTex) {
 				// 同じ名前のテクスチャが存在するが、レンダーターゲットとして作成されているために使いまわしできない
-				KLog::printError("E_TEXBANK: Incompatible texture found (type not matched): '%s", name.u8());
+				K__ERROR("E_TEXBANK: Incompatible texture found (type not matched): '%s", name.u8());
 			} else if (texres->m_Width != w || texres->m_Height != h) {
 				// 同じ名前のテクスチャが存在するが、サイズが変わった
-				// KLog::printWarning("E_TEXBANK: textur size changed: '%s'", name.u8());
+				// K__WARNING("E_TEXBANK: textur size changed: '%s'", name.u8());
 				tex = texres->m_TexId;
 			} else {
 				tex = texres->m_TexId;
@@ -1836,7 +1838,7 @@ public:
 			if (texbank && ImGui::Button("Export sprite image")) {
 				KImage img = exportSpriteImage(sprite_path, texbank, 0, nullptr);
 				if (!img.empty() && img.saveToFileName(export_filename.u8())) {
-					KLog::printInfo("Export texture image '%s' in '%s' ==> %s", original_tex_path.u8(), sprite->m_TextureName.u8(), export_filename.u8());
+					K__PRINT("Export texture image '%s' in '%s' ==> %s", original_tex_path.u8(), sprite->m_TextureName.u8(), export_filename.u8());
 				}
 			}
 
@@ -1877,33 +1879,33 @@ public:
 		// 準備
 		const KSpriteAuto sp = findSprite(sprite_path, false);
 		if (sp == nullptr) {
-			KLog::printError("Failed to exportSpriteImage: No sprite named '%s'", sprite_path.u8());
+			K__ERROR("Failed to exportSpriteImage: No sprite named '%s'", sprite_path.u8());
 			return KImage();
 		}
 		const KMesh *mesh = &sp->m_Mesh;
 		if (mesh == nullptr) {
-			KLog::printError("Failed to exportSpriteImage: No mesh in '%s'", sprite_path.u8());
+			K__ERROR("Failed to exportSpriteImage: No mesh in '%s'", sprite_path.u8());
 			return KImage();
 		}
 		if (mesh->getVertexCount() == 0) {
-			KLog::printError("Failed to exportSpriteImage: No vertices in '%s", sprite_path.u8());
+			K__ERROR("Failed to exportSpriteImage: No vertices in '%s", sprite_path.u8());
 			return KImage();
 		}
 		if (mesh->getSubMeshCount() == 0) {
-			KLog::printError("Failed to exportSpriteImage: No submeshes in '%s", sprite_path.u8());
+			K__ERROR("Failed to exportSpriteImage: No submeshes in '%s", sprite_path.u8());
 			return KImage();
 		}
 	//	KTexture *tex = KVideo::findTexture(texbank->findTextureRaw(sp->m_TextureName, false));
 		KTexture *tex = KVideo::findTexture(texbank->findTexture(sp->m_TextureName, modofier, false, node_for_mod));
 		if (tex == nullptr) {
-			KLog::printError("Failed to exportSpriteImage: No texture named '%s'", sp->m_TextureName.u8());
+			K__ERROR("Failed to exportSpriteImage: No texture named '%s'", sp->m_TextureName.u8());
 			return KImage();
 		}
 
 		// 実際のテクスチャ画像を取得。ブロック化されている場合はこの画像がパズル状態になっている
 		KImage raw_img = tex->exportTextureImage();
 		if (raw_img.empty()) {
-			KLog::printError("Failed to exportSpriteImage: Failed to Texture::exportImage() for texture '%s'", sp->m_TextureName.u8());
+			K__ERROR("Failed to exportSpriteImage: Failed to Texture::exportImage() for texture '%s'", sp->m_TextureName.u8());
 			return KImage();
 		}
 		// 完成画像の保存先
@@ -2102,7 +2104,7 @@ public:
 				}
 			}
 			if (probably.empty()) {
-				KLog::printError(
+				K__ERROR(
 					u8"E_SPRITE: スプライト '%s' はロードされていません。"
 					u8"拡張子を間違えていませんか？ '.png' や '.tex' はテクスチャであり、スプライトではありません"
 					u8"スプライトには通常 .sprite を用います"
@@ -2111,7 +2113,7 @@ public:
 					name.u8()
 				);
 			} else {
-				KLog::printError(
+				K__ERROR(
 					u8"E_SPRITE: スプライト '%s' はロードされていません。もしかして: '%s'",
 					name.u8(),
 					probably.u8()
@@ -2377,7 +2379,7 @@ public:
 #if 0
 		KSHADERID sh = m_video->createShaderFromGLSL(vs_code, fs_code, name.u8());
 		if (sh == nullptr) {
-			KLog::printError("E_SHADER: failed to build GLSL shader.");
+			K__ERROR("E_SHADER: failed to build GLSL shader.");
 			return nullptr;
 		}
 		m_Mutex.lock();
@@ -2462,7 +2464,7 @@ public:
 		m_Mutex.unlock();
 		if (ret != nullptr) return ret;
 		if (should_exist) {
-			KLog::printError("No shader named '%s'", name.u8());
+			K__ERROR("No shader named '%s'", name.u8());
 		}
 		return nullptr;
 	}
@@ -2521,13 +2523,13 @@ public:
 		m_Mutex.lock();
 		{
 			if (m_clips.find(name) != m_clips.end()) {
-				KLog::printInfo("W_CLIP_OVERWRITE: %s", name.c_str());
+				K__PRINT("W_CLIP_OVERWRITE: %s", name.c_str());
 				removeClipResource(name);
 			}
 			K__ASSERT(m_clips.find(name) == m_clips.end());
 			clip->grab();
 			m_clips[name] = clip;
-			KLog::printVerbose("ADD_CLIP: %s", name.c_str());
+			K__VERBOSE("ADD_CLIP: %s", name.c_str());
 		}
 		m_Mutex.unlock();
 
@@ -2575,7 +2577,7 @@ public:
 		KClipRes *clip = getClipResource(clipname);
 		if (!clipname.empty() && clip == nullptr) {
 			if (clip == nullptr) {
-				KLog::printError(
+				K__ERROR(
 					u8"E_CLIP: アニメ '%s' はロードされていません。"
 					u8"xres のロード忘れ, xres 内での定義忘れ, "
 					u8"KAnimationBank::addClipResource での登録忘れの可能性があります",
@@ -2677,22 +2679,25 @@ KLuaBank::KLuaBank() {
 	m_Cb = nullptr;
 }
 KLuaBank::~KLuaBank() {
+	K__DROP(m_Storage);
 	clear();
 }
-void KLuaBank::setStorage(KStorage &storage) {
+void KLuaBank::setStorage(KStorage *storage) {
+	K__DROP(m_Storage);
 	m_Storage = storage;
+	K__GRAB(m_Storage);
 }
 void KLuaBank::setCallback(KLuaBankCallback *cb) {
 	m_Cb = cb;
 }
 lua_State * KLuaBank::addEmptyScript(const std::string &name) {
-	KLog::printDebug("LUA_BANK: new script '%s'", name.c_str());
+	K__VERBOSE("LUA_BANK: new script '%s'", name.c_str());
 	lua_State *ls = luaL_newstate();
 	luaL_openlibs(ls);
 	m_Mutex.lock();
 	{
 		if (m_Items.find(name) != m_Items.end()) {
-			KLog::printWarning("W_SCRIPT_OVERWRITE: Resource named '%s' already exists. The resource data will be overwriten by new one", name.c_str());
+			K__WARNING("W_SCRIPT_OVERWRITE: Resource named '%s' already exists. The resource data will be overwriten by new one", name.c_str());
 			this->remove(name);
 		}
 		K__ASSERT(m_Items[name] == nullptr);
@@ -2713,11 +2718,11 @@ lua_State * KLuaBank::findScript(const std::string &name) const {
 }
 bool KLuaBank::addScript(const std::string &name, const std::string &code) {
 	if (name.empty()) {
-		KLog::printError("LUA_BANK: Failed to addScript. Invalid name");
+		K__ERROR("LUA_BANK: Failed to addScript. Invalid name");
 		return false;
 	}
 	if (code.empty()) {
-		KLog::printError("LUA_BANK: Failed to addScript named '%s': Invaliad code or size", name.c_str());
+		K__ERROR("LUA_BANK: Failed to addScript named '%s': Invaliad code or size", name.c_str());
 		return false;
 	}
 
@@ -2726,7 +2731,7 @@ bool KLuaBank::addScript(const std::string &name, const std::string &code) {
 	// ロードする
 	if (luaL_loadbuffer(ls, code.c_str(), code.size(), name.c_str()) != LUA_OK) {
 		const char *msg = luaL_optstring(ls, -1, __FUNCTION__);
-		KLog::printError("LUA_BANK: Failed to addScript named '%s': %s", name.c_str(), msg);
+		K__ERROR("LUA_BANK: Failed to addScript named '%s': %s", name.c_str(), msg);
 		this->remove(name);
 		return false;
 	}
@@ -2737,7 +2742,7 @@ bool KLuaBank::addScript(const std::string &name, const std::string &code) {
 	// 再外周のチャンクを実行し、グローバル変数名や関数名を解決する
 	if (lua_pcall(ls, 0, 0, 0) != LUA_OK) {
 		const char *msg = luaL_optstring(ls, -1, __FUNCTION__);
-		KLog::printError("LUA_BANK: Failed to addScript named '%s': %s", name.c_str(), msg);
+		K__ERROR("LUA_BANK: Failed to addScript named '%s': %s", name.c_str(), msg);
 		this->remove(name);
 		return false;
 	}
@@ -2754,7 +2759,7 @@ lua_State * KLuaBank::queryScript(const std::string &name, bool reload) {
 
 	lua_State *ls = findScript(name);
 	if (ls == nullptr) {
-		std::string bin = m_Storage.loadBinary(name.c_str());
+		std::string bin = m_Storage->loadBinary(name.c_str());
 		if (addScript(name, bin)) {
 			ls = findScript(name);
 		}
@@ -2783,7 +2788,7 @@ void KLuaBank::remove(const std::string &name) {
 		if (it != m_Items.end()) {
 			lua_State *ls = it->second;
 			lua_close(ls);
-			KLog::printDebug("LUA_BANK: remove '%s'", name.c_str());
+			K__VERBOSE("LUA_BANK: remove '%s'", name.c_str());
 			m_Items.erase(it);
 		}
 	}
@@ -2867,7 +2872,7 @@ public:
 			}
 		}
 		if (should_exists) {
-			KLog::printError(u8"E_FONT: フォントファイル '%s' のロードに失敗しました", filename.c_str());
+			K__ERROR(u8"E_FONT: フォントファイル '%s' のロードに失敗しました", filename.c_str());
 		}
 		return false;
 	}
@@ -2884,7 +2889,7 @@ public:
 			}
 		}
 		if (should_exists) {
-			KLog::printError(u8"E_FONT: フォントファイル '%s' はシステムにインストールされていません", filename.c_str());
+			K__ERROR(u8"E_FONT: フォントファイル '%s' はシステムにインストールされていません", filename.c_str());
 		}
 		return false;
 	}
@@ -2925,7 +2930,7 @@ public:
 			m_system_default_font = KFont::createFromFileName(name.c_str());
 			if (!m_system_default_font.isOpen()) {
 				// システムフォントのロードにすら失敗した
-				KLog::printError("E_FONT: Failed to load default font: %s", name.c_str());
+				K__ERROR("E_FONT: Failed to load default font: %s", name.c_str());
 			}
 		}
 		return m_system_default_font;
@@ -3032,9 +3037,7 @@ public:
 			KPath export_filename = KPath("__export__mesh.txt").getFullPath();
 			if (ImGui::Button("Export")) {
 				if (_MeshSaveToFileName(mesh, export_filename)) {
-					KLog::muteDialog();
-					KLog::printInfo("Export mesh '%s'", export_filename.u8());
-					KLog::unmuteDialog();
+					K__PRINT("Export mesh '%s'", export_filename.u8());
 				}
 			}
 			if (K::pathExists(export_filename.u8())) {
@@ -3211,7 +3214,7 @@ public:
 					// 例えばページ[0], [1], [2] にレイヤー名が指定されておらず、ページ[3]で初めてレイヤー名が指定された場合、
 					// ページ[0]までさかのぼって各レイヤに名前を付ける
 					if (i > 0) {
-						KLog::printWarning(
+						K__WARNING(
 							u8"E_EDGELABELLIST: '%s' の最初のページには、どのレイヤーにも名前が付いていません。"
 							u8"ページ[%d]で指定されているレイヤー名 '%s' をページ[0]にも適用します",
 							debug_name.u8(), i, edge.getPage(i)->getLayer(0)->m_label_u8.c_str());
@@ -3392,7 +3395,7 @@ public:
 				}
 				key->layers[layer].sprite = sprite;
 			} else {
-				KLog::printError(u8"E_LAYEREDSPRITECLIP_SPRITE: スプライトのレイヤー数が多すぎます");
+				K__ERROR(u8"E_LAYEREDSPRITECLIP_SPRITE: スプライトのレイヤー数が多すぎます");
 			}
 		}
 	}
@@ -3405,7 +3408,7 @@ public:
 				}
 				key->layers[layer].label = label;
 			} else {
-				KLog::printError(u8"E_LAYEREDSPRITECLIP_LABEL: スプライトのレイヤー数が多すぎます");
+				K__ERROR(u8"E_LAYEREDSPRITECLIP_LABEL: スプライトのレイヤー数が多すぎます");
 			}
 		}
 	}
@@ -3418,7 +3421,7 @@ public:
 				}
 				key->layers[layer].command = command;
 			} else {
-				KLog::printError(u8"E_LAYEREDSPRITECLIP_CMD: スプライトのレイヤー数が多すぎます");
+				K__ERROR(u8"E_LAYEREDSPRITECLIP_CMD: スプライトのレイヤー数が多すぎます");
 			}
 		}
 	}
@@ -3450,7 +3453,7 @@ public:
 		K__ASSERT_RETURN(xml);
 		KClipRes::SPRITE_KEY *key = getkey(page);
 		if (key->xml_data) {
-			KLog::printWarning(u8"<Data> ノードが上書きされました。古い Data ノードは破棄されます: ページ %d", page);
+			K__WARNING(u8"<Data> ノードが上書きされました。古い Data ノードは破棄されます: ページ %d", page);
 			key->xml_data->drop();
 		}
 		key->xml_data = xml->clone();
@@ -3521,7 +3524,7 @@ static void _ReadPageMarkAttr(CLayeredSpriteClipBuilder &builder, KXmlElement *x
 		if (K_StrToMark(mark_str, &mark)) {
 			builder.setPageMark(clip_page_index, mark);
 		} else {
-			KLog::printWarning("unknown next attr: '%s' %s(%d)", mark_str, xmlName, xPage->getLineNumber());
+			K__WARNING("unknown next attr: '%s' %s(%d)", mark_str, xmlName, xPage->getLineNumber());
 		}
 	}
 }
@@ -3532,7 +3535,7 @@ static void _ReadPageNextAttr(CLayeredSpriteClipBuilder &builder, KXmlElement *x
 
 	KMark nextmark = KMark_NONE;
 	if (!K_StrToMark(next_str, &nextmark)) {
-		KLog::printWarning("unknown next attr: '%s' %s(%d)", next_str, xmlName, xPage->getLineNumber());
+		K__WARNING("unknown next attr: '%s' %s(%d)", next_str, xmlName, xPage->getLineNumber());
 	}
 
 	if (nextmark != KMark_NONE || nextclip[0]) {
@@ -3678,45 +3681,47 @@ void KGameImagePack::makeSpritelistFromPack(const KImgPackR &pack, const KImage 
 }
 
 // imageListName には元データのファイル名を指定する。例えば "player/player.edg" など
-KImgPackR KGameImagePack::loadPackR_fromCache(KStorage &storage, const std::string &imageListName, KImage *result_image) {
+KImgPackR KGameImagePack::loadPackR_fromCache(KStorage *storage, const std::string &imageListName, KImage *result_image) {
+	K__ASSERT(storage);
+
 	if (result_image == nullptr) {
 		return KImgPackR();
 	}
 	if (imageListName.empty()) {
-		KLog::printError("Filename cannot be empty"); 
+		K__ERROR("Filename cannot be empty"); 
 		return KImgPackR();
 	}
 	std::string metaName = imageListName + ".meta";
 	std::string pngName = imageListName + ".png";
 
-	std::string metaData = storage.loadBinary(metaName, false);
-	std::string pngData = storage.loadBinary(pngName, false);
+	std::string metaData = storage->loadBinary(metaName, false);
+	std::string pngData = storage->loadBinary(pngName, false);
 
 	if (metaData.size() == 0) {
-		KLog::printError("Failed to read KImgPackR meta-data: %s", metaName.c_str()); 
+		K__ERROR("Failed to read KImgPackR meta-data: %s", metaName.c_str()); 
 		return KImgPackR();
 	}
 	if (pngData.size() == 0) {
-		KLog::printError("Failed to read KImgPackR image-data: %s", pngName.c_str()); 
+		K__ERROR("Failed to read KImgPackR image-data: %s", pngName.c_str()); 
 		return KImgPackR();
 	}
 	KImgPackR packR;
 	if (!packR.loadFromMetaString(metaData)) {
-		KLog::printError("Failed to makeread KImgPackR from meta-data: %s", metaName.c_str()); 
+		K__ERROR("Failed to makeread KImgPackR from meta-data: %s", metaName.c_str()); 
 		return KImgPackR();
 	}
 	*result_image = KImage::createFromFileInMemory(pngData);
 	if (result_image->empty()) {
-		KLog::printError("Failed to load png: %s", pngName.c_str()); 
+		K__ERROR("Failed to load png: %s", pngName.c_str()); 
 		return KImgPackR();
 	}
 	return packR;
 }
-bool KGameImagePack::loadSpriteList(KStorage &storage, KSpriteList *sprites, const std::string &imageListName) {
+bool KGameImagePack::loadSpriteList(KStorage *storage, KSpriteList *sprites, const std::string &imageListName) {
 	KImage tex_image;
 	KImgPackR packR = loadPackR_fromCache(storage, imageListName, &tex_image);
 	if (packR.empty()) {
-		KLog::printError("Failed to load packR: %s", imageListName.c_str());
+		K__ERROR("Failed to load packR: %s", imageListName.c_str());
 		return false;
 	}
 	KPath tex_name = KGamePath::getEdgeAtlasPngPath(imageListName);
@@ -3854,7 +3859,7 @@ bool KGameEdgeBuilder::parseLabel(const KPath &label, KGameEdgeLayerLabel *out) 
 		if (tok.size()-1 < KGameEdgeLayerLabel::MAXCMDS) {
 			out->numcmds = tok.size()-1;
 		} else {
-			KLog::printError(u8"E_EDGE_COMMAND: 指定されたコマンド '%s' の個数が、設定可能な最大数 %d を超えています", 
+			K__ERROR(u8"E_EDGE_COMMAND: 指定されたコマンド '%s' の個数が、設定可能な最大数 %d を超えています", 
 				label.u8(), KGameEdgeLayerLabel::MAXCMDS);
 			out->numcmds = KGameEdgeLayerLabel::MAXCMDS;
 		}
@@ -3872,7 +3877,7 @@ bool KGameEdgeBuilder::loadFromStream(KEdgeDocument *edge, KInputStream &file, c
 		removeIgnorableElements(edge);
 		return true;
 	} else {
-		KLog::printError("E_EDGE_FAIL: Filed to load: %s", debugname.c_str());
+		K__ERROR("E_EDGE_FAIL: Filed to load: %s", debugname.c_str());
 		return false;
 	}
 }
@@ -3883,7 +3888,7 @@ bool KGameEdgeBuilder::loadFromFileInMemory(KEdgeDocument *edge, const void *dat
 	if (file.openMemory(data, size)) {
 		ret = loadFromStream(edge, file, debugname);
 	} else {
-		KLog::printError("E_MEM_READER_FAIL: %s", debugname.c_str());
+		K__ERROR("E_MEM_READER_FAIL: %s", debugname.c_str());
 	}
 	return ret;
 }
@@ -3894,7 +3899,7 @@ bool KGameEdgeBuilder::loadFromFileName(KEdgeDocument *edge, const std::string &
 	if (file.openFileName(filename)) {
 		ret = loadFromStream(edge, file, filename);
 	} else {
-		KLog::printError("E_EDGE_FAIL: STREAM ERROR: %s", filename.c_str());
+		K__ERROR("E_EDGE_FAIL: STREAM ERROR: %s", filename.c_str());
 	}
 	return ret;
 }
@@ -3920,11 +3925,11 @@ public:
 	}
 	bool importFileEx(const std::string &filepath, const std::string &bankDir, const std::string &dataDir, int cellsize, KPaletteImportFlags palflags, KGameUpdateBankFlags bankflags) {
 		if (filepath.empty()) {
-			KLog::printError("Filename cannot be empty");
+			K__ERROR("Filename cannot be empty");
 			return false;
 		}
 		if (!K::pathIsDir(bankDir)) {
-			KLog::printError("Directory does not exist: %s", bankDir.c_str());
+			K__ERROR("Directory does not exist: %s", bankDir.c_str());
 			return false;
 		}
 
@@ -3965,21 +3970,21 @@ private:
 	bool loadEdge(const std::string &name, const std::string &dataDir, KEdgeDocument *result) {
 		// edge からパック情報を作成する
 		if (name.empty()) {
-			KLog::printError("Filename cannot be empty");
+			K__ERROR("Filename cannot be empty");
 			return false;
 		}
 		std::string nameInDataDir = K::pathJoin(dataDir, name);
 		if (!K::pathExists(nameInDataDir)) {
-			KLog::printError("File does not exist: %s", nameInDataDir.c_str());
+			K__ERROR("File does not exist: %s", nameInDataDir.c_str());
 			return false;
 		}
 		KInputStream file;
 		if (!file.openFileName(nameInDataDir)) {
-			KLog::printError("Failed to open file: %s", nameInDataDir.c_str());
+			K__ERROR("Failed to open file: %s", nameInDataDir.c_str());
 			return false;
 		}
 		if (!KGameEdgeBuilder::loadFromStream(result, file, nameInDataDir)) {
-			KLog::printError("Failed load edge document: %s", nameInDataDir.c_str());
+			K__ERROR("Failed load edge document: %s", nameInDataDir.c_str());
 			return false;
 		}
 		return true;
@@ -4051,7 +4056,7 @@ private:
 				if (key.compare("blend") == 0) {
 					KBlend tmp = KVideoUtils::strToBlend(val.c_str(), KBlend_INVALID);
 					if (tmp == KBlend_INVALID) {
-						KLog::printError(u8"E_EDGE_BLEND: ブレンド指定方法が正しくありません: '%s'", label.cmd[i].u8());
+						K__ERROR(u8"E_EDGE_BLEND: ブレンド指定方法が正しくありません: '%s'", label.cmd[i].u8());
 						break;
 					}
 					return tmp;
@@ -4104,13 +4109,13 @@ public:
 		uint32_t starttime = K::clockMsec32();
 		m_Flags = flags;
 
-		KLog::printInfo("Update bank");
-		if (bankDir.empty()) { KLog::printError("bankDir cannot be empty"); return false; }
-		if (dataDir.empty()) { KLog::printError("dataDir cannot be empty"); return false; }
+		K__PRINT("Update bank");
+		if (bankDir.empty()) { K__ERROR("bankDir cannot be empty"); return false; }
+		if (dataDir.empty()) { K__ERROR("dataDir cannot be empty"); return false; }
 
 		// 生データフォルダは必須
 		if (!K::pathIsDir(dataDir)) {
-			KLog::printError("Data directory does not exist: %s", dataDir.c_str());
+			K__ERROR("Data directory does not exist: %s", dataDir.c_str());
 			m_Flags = 0;
 			return false;
 		}
@@ -4118,7 +4123,7 @@ public:
 		// 生バンクフォルダが無ければ作成する＆フォルダ構造がデータフォルダと同じになるようにする
 		// （少なくとも、データフォルダ内にあるサブフォルダは必ずバンクフォルダ内にも存在するように）
 		if (!updateBankDir(bankDir, dataDir)) {
-			KLog::printError("Bank directory does not exist: %s", bankDir.c_str());
+			K__ERROR("Bank directory does not exist: %s", bankDir.c_str());
 			m_Flags = 0;
 			return false;
 		}
@@ -4150,7 +4155,7 @@ public:
 			xDoc->writeDoc(file);
 		}
 		K__DROP(xDoc);
-		KLog::printInfo("Bank updated (%d msec)", K::clockMsec32() - starttime);
+		K__PRINT("Bank updated (%d msec)", K::clockMsec32() - starttime);
 		m_Flags = 0;
 		return true;
 	}
@@ -4185,7 +4190,7 @@ private:
 		// 現在のデータファイルのタイムスタンプ
 		std::string nameInData = K::pathJoin(dataDir, name);
 		if (!K::pathExists(nameInData)) {
-			KLog::printError("Data file does not exist: %s", nameInData.c_str());
+			K__ERROR("Data file does not exist: %s", nameInData.c_str());
 			return -1;
 		}
 		time_t timestampInData = K::fileGetTimeStamp_Modify(nameInData.c_str());
@@ -4206,7 +4211,7 @@ private:
 			}
 			return 1;
 		}
-		KLog::printError("Failed to import file: %s", nameInData.c_str());
+		K__ERROR("Failed to import file: %s", nameInData.c_str());
 		return -1;
 	}
 	bool onUpdateFile(const std::string &name, const std::string &bankDir, const std::string &dataDir) {
@@ -4233,7 +4238,7 @@ private:
 						}
 					}
 				}
-				KLog::printInfo("Import: %s", name.c_str());
+				K__PRINT("Import: %s", name.c_str());
 				return true;
 			} else {
 				return false;
@@ -4257,10 +4262,10 @@ private:
 						}
 					}
 				}
-				KLog::printInfo("Import: %s", name.c_str());
+				K__PRINT("Import: %s", name.c_str());
 				return true;
 			} else {
-				KLog::printError("Failed to copy: %s ==> %s", nameInData.c_str(), nameInBank.c_str());
+				K__ERROR("Failed to copy: %s ==> %s", nameInData.c_str(), nameInBank.c_str());
 				return false;
 			}
 		}
@@ -4341,7 +4346,7 @@ private:
 	bool updateBankDir(const std::string &bankDir, const std::string &dataDir) {
 		if (!K::pathIsDir(bankDir)) {
 			if (!K::fileMakeDir(bankDir)) {
-				KLog::printError("Failed to make bank directory: %s", bankDir.c_str());
+				K__ERROR("Failed to make bank directory: %s", bankDir.c_str());
 				return false;
 			}
 		}
@@ -4352,13 +4357,13 @@ private:
 			std::string dirInBank = K::pathJoin(bankDir, it->c_str());
 
 			if (K::pathIsFile(dirInBank)) {
-				KLog::printError("Failed to make directory: %s\n(non-directory-file with the same name already exist)", dirInBank.c_str());
+				K__ERROR("Failed to make directory: %s\n(non-directory-file with the same name already exist)", dirInBank.c_str());
 				return false;
 			}
 
 			if (!K::pathIsDir(dirInBank)) {
 				if (!K::fileMakeDir(dirInBank)) {
-					KLog::printError("Failed to make directory: %s", dirInBank.c_str());
+					K__ERROR("Failed to make directory: %s", dirInBank.c_str());
 					return false;
 				}
 			}
@@ -4392,15 +4397,22 @@ struct CONTENTS {
 // <Texture>
 class CXresTexture {
 	CXresLoaderCallback *m_Callback;
-	KStorage m_Storage;
+	KStorage *m_Storage;
 public:
 	CXresTexture() {
 		m_Callback = nullptr;
+		m_Storage = nullptr;
 	}
-	void setup(KStorage &storage, CXresLoaderCallback *cb) {
+	virtual ~CXresTexture() {
+		K__DROP(m_Storage);
+	}
+
+	void setup(KStorage *storage, CXresLoaderCallback *cb) {
 		K__ASSERT_RETURN(KBank::getTextureBank()); 
 		K__ASSERT_RETURN(KBank::getSpriteBank());
+		K__DROP(m_Storage);
 		m_Storage = storage;
+		K__GRAB(m_Storage);
 		m_Callback = cb;
 	}
 
@@ -4441,7 +4453,7 @@ private:
 					image_name = KGamePath::evalPath(filename, xml_name, ".png");
 				}
 			} else {
-				KLog::printError(u8"E_FILELOADER_TEXNODE: <Texture> に file 属性が指定されていません: %s(%d)",
+				K__ERROR(u8"E_FILELOADER_TEXNODE: <Texture> に file 属性が指定されていません: %s(%d)",
 					xml_name, xTex->getLineNumber());
 				return false;
 			}
@@ -4458,7 +4470,7 @@ private:
 
 			} else {
 				texture_name = image_name;
-			//	KLog::printError(u8"E_FILELOADER_TEXNODE: <Texture> に name 属性が指定されていません: %s(%d)", xml_name, xml->getLineNumber());
+			//	K__ERROR(u8"E_FILELOADER_TEXNODE: <Texture> に name 属性が指定されていません: %s(%d)", xml_name, xml->getLineNumber());
 			//	continue;
 			}
 		}
@@ -4470,14 +4482,14 @@ private:
 		std::string filter = xTex->getAttrString("filter", "");
 
 		if (image_name.empty() && filter.empty()) {
-			KLog::printError(
+			K__ERROR(
 				u8"E_FILELOADER_TEX: テクスチャの生成元画像ファイルが指定されていない場合は filter 属性で"
 				u8"生成画像を指定する必要がありますが、生成元画像とフィルターの両方が省略されています: %s", texture_name.u8()
 			);
 			return false;
 		}
 		if (!getTextureImage(img, image_name.u8(), filter)) {
-			KLog::printError(u8"E_FILELOADER_TEXNODE: <Texture> で指定された画像 '%s' をロードできないか、フィルター '%s' を適用できませんでした: %s(%d)",
+			K__ERROR(u8"E_FILELOADER_TEXNODE: <Texture> で指定された画像 '%s' をロードできないか、フィルター '%s' を適用できませんでした: %s(%d)",
 				image_name.u8(), filter, xml_name, xTex->getLineNumber());
 			return false;
 		}
@@ -4534,7 +4546,7 @@ private:
 					// name_str は、処理中の XML ファイルがあるフォルダからの相対パスで指定されているものとする
 					sprite_name = KGamePath::evalPath(KPath(name_str), xml_name, ".sprite");
 				} else {
-					KLog::printError(u8"E_FILELOADER_TEXNODE: <Sprite> に name 属性が指定されていません: %s(%d)",
+					K__ERROR(u8"E_FILELOADER_TEXNODE: <Sprite> に name 属性が指定されていません: %s(%d)",
 						xml_name, xSprite->getLineNumber()
 					);
 					return false;
@@ -4566,14 +4578,14 @@ private:
 	bool getTextureImage(KImage &result_image, const std::string &image_name, const std::string &filter) {
 		// 画像をロード
 		if (!image_name.empty()) {
-			std::string bin = m_Storage.loadBinary(image_name, true);
+			std::string bin = m_Storage->loadBinary(image_name, true);
 			if (bin.empty()) {
-				KLog::printError("Failed to read binary: %s", image_name.c_str());
+				K__ERROR("Failed to read binary: %s", image_name.c_str());
 				return false;
 			}
 			result_image = KImage::createFromFileInMemory(bin);
 			if (result_image.empty()) {
-				KLog::printError("Failed to load image: %s", image_name.c_str());
+				K__ERROR("Failed to load image: %s", image_name.c_str());
 				return false;
 			}
 		}
@@ -4581,7 +4593,7 @@ private:
 		// フィルタを適用
 		if (!filter.empty() && m_Callback) {
 			if (!m_Callback->onImageFilter(filter, result_image)) {
-				KLog::printError("Unknown image filter: %s", filter.c_str());
+				K__ERROR("Unknown image filter: %s", filter.c_str());
 			}
 		}
 		return true;
@@ -4604,7 +4616,7 @@ public:
 			// 処理中の XML ファイルがあるフォルダからの相対パスで指定されているものとして、クリップ名を決める
 			return KGamePath::evalPath(KPath(str), xml_name, ".clip");
 		} else {
-			KLog::printError(u8"E_FILELOADER_CLIPNODE: <Clip> に name 属性が指定されていません: %s(%d)",
+			K__ERROR(u8"E_FILELOADER_CLIPNODE: <Clip> に name 属性が指定されていません: %s(%d)",
 				xml_name, elm->getLineNumber()
 			);
 			return KPath();
@@ -4671,7 +4683,7 @@ public:
 					page_duration = xPage->getAttrInt("dur", 0);
 				}
 				if (xPage->getAttrInt("delay") > 0) {
-					KLog::printWarning(u8"E_FILELOADER_CLIPNODE: delay 属性は削除されました。代わりに dur を使ってください");
+					K__WARNING(u8"E_FILELOADER_CLIPNODE: delay 属性は削除されました。代わりに dur を使ってください");
 					page_duration = xPage->getAttrInt("delay");
 				}
 
@@ -4697,7 +4709,7 @@ public:
 							{
 								std::string sprite_name = xElm->getAttrString("sprite", "");
 								if (sprite_name.empty()) {
-									KLog::printWarning(u8"E_FILELOADER_CLIPNODE: <Layer> に sprite 属性が指定されていません: %s(%d)",
+									K__WARNING(u8"E_FILELOADER_CLIPNODE: <Layer> に sprite 属性が指定されていません: %s(%d)",
 										xml_name, xElm->getLineNumber()
 									);
 								} else {
@@ -4705,7 +4717,7 @@ public:
 								}
 							}
 							if (KBank::getSpriteBank()->findSprite(spriePath, false) == nullptr) {
-								KLog::printWarning(
+								K__WARNING(
 									u8"E_FILELOADER_CLIPNODE: 未登録のスプライト %s が指定されています。"
 									u8"<Texture> または <EdgeSprites> ノードを書き忘れていませんか？: %s(%d",
 									spriePath.c_str(), xml_name, xElm->getLineNumber()
@@ -4727,7 +4739,7 @@ public:
 						{
 							std::string sprite_name = xPage->getAttrString("sprite", "");
 							if (sprite_name.empty()) {
-								KLog::printWarning(u8"E_FILELOADER_CLIPNODE: <Layer> に sprite 属性が指定されていません: %s(%d)",
+								K__WARNING(u8"E_FILELOADER_CLIPNODE: <Layer> に sprite 属性が指定されていません: %s(%d)",
 									xml_name, xPage->getLineNumber()
 								);
 							} else {
@@ -4735,7 +4747,7 @@ public:
 							}
 						}
 						if (KBank::getSpriteBank()->findSprite(spriePath, false) == nullptr) {
-							KLog::printWarning(
+							K__WARNING(
 								u8"E_FILELOADER_CLIPNODE: 未登録のスプライト %s が指定されています。"
 								u8"<Texture> または <EdgeSprites> ノードを書き忘れていませんか？: %s(%d",
 								spriePath.u8(), xml_name, xPage->getLineNumber()
@@ -4770,14 +4782,20 @@ public:
 
 // <EdgeSprites>
 class CXresEdgeSprite {
-	KStorage m_Storage;
+	KStorage *m_Storage;
 public:
 	CXresEdgeSprite() {
+		m_Storage = nullptr;
 	}
-	void setup(KStorage &storage) {
-		m_Storage = storage;
+	virtual ~CXresEdgeSprite() {
+		K__DROP(m_Storage);
+	}
+	void setup(KStorage *storage) {
 		K__ASSERT_RETURN(KBank::getTextureBank()); 
 		K__ASSERT_RETURN(KBank::getSpriteBank()); 
+		K__DROP(m_Storage);
+		m_Storage = storage;
+		K__GRAB(m_Storage);
 	}
 	// <EdgeSprites> ノードを処理する
 	bool load_EdgeSpritesNode(KXmlElement *xEdgeSprites, const char *xml_name) {
@@ -4795,7 +4813,7 @@ public:
 				// ※file_str は処理中の XML ファイルがあるフォルダからの相対パスで指定されているものとする
 				edge_name = KGamePath::evalPath(KPath(file_str), xml_name, ".edg").c_str();
 			} else {
-				KLog::printError(u8"E_FILELOADER_EDGESPRITENODE: <EdgeSprites> に file 属性が指定されていません: %s(%d)",
+				K__ERROR(u8"E_FILELOADER_EDGESPRITENODE: <EdgeSprites> に file 属性が指定されていません: %s(%d)",
 					xml_name, xEdgeSprites->getLineNumber()
 				);
 				return false;
@@ -4823,7 +4841,7 @@ public:
 		// 無視属性かどうかの判定は KGameEdgeBuilder::isIgnorablePage 等を参照すること
 		KSpriteList sprites;
 		if (!KGameImagePack::loadSpriteList(m_Storage, &sprites, edge_name)) {
-			KLog::printError(u8"E_FILELOADER_EDGESPRITENODE: <EdgeSprites> で指定されたファイル '%s' からはスプライトを生成できませんでした: %s(%d)",
+			K__ERROR(u8"E_FILELOADER_EDGESPRITENODE: <EdgeSprites> で指定されたファイル '%s' からはスプライトを生成できませんでした: %s(%d)",
 				edge_name.c_str(), xml_name, xEdgeSprites->getLineNumber()
 			);
 			return false;
@@ -4891,14 +4909,20 @@ public:
 
 
 class CXresEdgeAnimation {
-	KStorage m_Storage;
+	KStorage *m_Storage;
 public:
 	CXresEdgeAnimation() {
+		m_Storage = nullptr;
 	}
-	void setup(KStorage &storage) {
+	virtual ~CXresEdgeAnimation() {
+		K__DROP(m_Storage);
+	}
+	void setup(KStorage *storage) {
 		K__ASSERT_RETURN(KBank::getSpriteBank());
 		K__ASSERT_RETURN(KBank::getAnimationBank());
+		K__DROP(m_Storage);
 		m_Storage = storage;
+		K__GRAB(m_Storage);
 	}
 	// <EdgeAnimation> ノードを処理する
 	bool load_EdgeAnimationNode(KXmlElement *xEdgeAnimation, const char *xml_name, KClipRes **out_clip) {
@@ -4915,7 +4939,7 @@ public:
 				// ※file_str は処理中の XML ファイルがあるフォルダからの相対パスで指定されているものとする
 				edge_name = KGamePath::evalPath(KPath(file_str), xml_name, ".edg");
 			} else {
-				KLog::printError(u8"E_FILELOADER_EDGEANINODE: <EdgeClip> に file 属性が指定されていません: %s(%d)",
+				K__ERROR(u8"E_FILELOADER_EDGEANINODE: <EdgeClip> に file 属性が指定されていません: %s(%d)",
 					xml_name, xEdgeAnimation->getLineNumber()
 				);
 				return false;
@@ -4941,9 +4965,9 @@ public:
 		// 無視ページやレイヤを削除した状態で取得するため、
 		// KEdgeDocument::loadFromFile ではなく KGameEdgeBuilder を使う
 		KEdgeDocument edge;
-		KInputStream edgefile = m_Storage.getInputStream(edge_name.u8());
+		KInputStream edgefile = m_Storage->getInputStream(edge_name.u8());
 		if (!edgefile.isOpen()) {
-			KLog::printError(
+			K__ERROR(
 				u8"E_FILELOADER_EDGEANINODE: "
 				u8"<EdgeAnimation> で指定された Edge ファイル '%s' をロードできませんでした: %s(%d)",
 				edge_name.u8(), xml_name, xEdgeAnimation->getLineNumber()
@@ -4954,7 +4978,7 @@ public:
 		if (1) {
 			bool ok = KGameEdgeBuilder::loadFromStream(&edge, edgefile, edge_name.u8());
 			if (!ok) {
-				KLog::printError(
+				K__ERROR(
 					u8"E_FILELOADER_EDGEANINODE: "
 					u8"<EdgeAnimation> で指定された Edge ファイル '%s' をロードできませんでした: %s(%d)",
 					edge_name.u8(), xml_name, xEdgeAnimation->getLineNumber()
@@ -5029,7 +5053,7 @@ public:
 					edgePageForThisPage = externEdgePage;
 				} else {
 					if (edgepage == nullptr) {
-						KLog::printError(
+						K__ERROR(
 							u8"E_FILELOADER_EDGEANINODE: %s のページ番号 [%d] は存在しません。"
 							u8"このファイルで指定できるページ番号は 0 から %d までです: %s(%d)",
 							edge_name.u8(), edgePageIndex, edge.getPageCount()-1, 
@@ -5070,9 +5094,9 @@ public:
 				// ページ内のすべてのレイヤを重ねたものを１枚のスプライトとして扱う
 				if (externEdgeName && externEdgeName[0] && externEdgePage >= 0) {
 					KPath tmp_edge_name = KGamePath::evalPath(KPath(externEdgeName), xml_name, ".edg"); // リソース内の絶対パスに直す
-					KInputStream tmp_file = m_Storage.getInputStream(tmp_edge_name.u8());
+					KInputStream tmp_file = m_Storage->getInputStream(tmp_edge_name.u8());
 					if (!tmp_file.isOpen()) {
-						KLog::printError(
+						K__ERROR(
 							u8"E_FILELOADER_EDGEANINODE: "
 							u8"外部 Edge の指定が正しくありません: NO_FILE '%s'", 
 							tmp_edge_name.u8()
@@ -5082,7 +5106,7 @@ public:
 					CEdgeFile tmp_edge;
 					bool ok = tmp_edge.loadEdge(tmp_file, tmp_edge_name.u8());
 					if (!ok) {
-						KLog::printError(
+						K__ERROR(
 							u8"E_FILELOADER_EDGEANINODE: 外部 Edge の指定が正しくありません。"
 							u8"Edge ファイル '%s' をロードできません",
 							tmp_edge_name.u8()
@@ -5091,7 +5115,7 @@ public:
 					}
 					int num_layers = tmp_edge.getLayerCount(externEdgePage);
 					if (num_layers == 0) {
-						KLog::printError(
+						K__ERROR(
 							u8"E_FILELOADER_EDGEANINODE: 外部 Edge のページ指定が正しくありません。"
 							u8"Edge ファイル '%s' にはページ %d (0起算) が存在しません",
 							tmp_edge_name.u8(), externEdgePage
@@ -5104,7 +5128,7 @@ public:
 						const KPath &label = tmp_edge.getLabel(externEdgePage, li);
 						const char *command = tmp_edge.getCommand(externEdgePage, li);
 						if (KBank::getSpriteBank()->findSprite(spriePath, false) == nullptr) {
-							KLog::printWarning(
+							K__WARNING(
 								u8"E_FILELOADER_EDGEANINODE: 未登録のスプライト %s が指定されています。"
 								u8"<Texture> または <EdgeSprites> ノードを書き忘れていませんか？: %s(%d",
 								spriePath.u8(), xml_name, xPage->getLineNumber()
@@ -5123,7 +5147,7 @@ public:
 							// <Layer> ノードが指定されている
 							// 例: <Layer layer="0"/>
 							if (xLayer->getAttrString("layer") == nullptr) {
-								KLog::printError(
+								K__ERROR(
 									u8"E_FILELOADER_EDGEANINODE: <Layer> ノードにレイヤー番号指定 layer='XXX' がありません。"
 									u8"必ずレイヤー番号を指定してください: %s(%d)",
 									xml_name, xLayer->getLineNumber());
@@ -5131,7 +5155,7 @@ public:
 							}
 							int edgeLayerIndex = xLayer->getAttrInt("layer", -1);
 							if (edgeLayerIndex < 0 || edgepage->getLayerCount() <= edgeLayerIndex) {
-								KLog::printError(
+								K__ERROR(
 									u8"E_FILELOADER_EDGEANINODE: %s のページ [%d] にはレイヤー番号 %d が存在しません。"
 									u8"このページに指定できるレイヤー番号は 0 から %d までです: %s(%d)",
 									edge_name.u8(), edgePageIndex, edgeLayerIndex, edgepage->getLayerCount()-1,
@@ -5143,7 +5167,7 @@ public:
 							const char *command = edgeCmds.getCommand(edgePageIndex, edgeLayerIndex);
 
 							if (KBank::getSpriteBank()->findSprite(spriePath, false) == nullptr) {
-								KLog::printWarning(
+								K__WARNING(
 									u8"E_FILELOADER_EDGEANINODE: 未登録のスプライト %s が指定されています。"
 									u8"<Texture> または <EdgeSprites> ノードを書き忘れていませんか？: %s(%d",
 									spriePath.u8(), xml_name, xLayer->getLineNumber());
@@ -5163,7 +5187,7 @@ public:
 							const char *command = edgeCmds.getCommand(edgePageIndex, li);
 
 							if (KBank::getSpriteBank()->findSprite(spriePath, false) == nullptr) {
-								KLog::printWarning(
+								K__WARNING(
 									u8"E_FILELOADER_EDGEANINODE: 未登録のスプライト %s が指定されています。"
 									u8"<Texture> または <EdgeSprites> ノードを書き忘れていませんか？: %s(%d",
 									spriePath.u8(), xml_name, xPage->getLineNumber());
@@ -5254,13 +5278,19 @@ bool K_makeClip(KClipRes **out_clip, KInputStream &edge_file, const KPath &edge_
 
 
 class CXresShader {
-	KStorage m_Storage;
+	KStorage *m_Storage;
 public:
 	CXresShader() {
+		m_Storage = nullptr;
 	}
-	void setup(KStorage &storage) {
+	virtual ~CXresShader() {
+		K__DROP(m_Storage);
+	}
+	void setup(KStorage *storage) {
 		K__ASSERT_RETURN(KBank::getShaderBank());
+		K__DROP(m_Storage);
 		m_Storage = storage;
+		K__GRAB(m_Storage);
 	}
 	// <Shader> ノードを処理する
 	bool load_ShaderNode(KXmlElement *xShader, const char *xml_name) {
@@ -5277,7 +5307,7 @@ public:
 				// ※file_str は処理中の XML ファイルがあるフォルダからの相対パスで指定されているものとする
 				source_name = KGamePath::evalPath(KPath(file_str), xml_name, ".fx");
 			} else {
-				KLog::printError(
+				K__ERROR(
 					u8"E_FILELOADER_SHADERNODE: "
 					u8"<Shader> に file 属性が指定されていません: %s(%d)",
 					xml_name, xShader->getLineNumber()
@@ -5290,7 +5320,7 @@ public:
 		if (loadShader(source_name.u8(), xml_name)) {
 			return true;
 		} else {
-			KLog::printError(
+			K__ERROR(
 				u8"E_FILELOADER_SHADERNODE: "
 				u8"<Shader> で指定されたシェーダー '%s' をロードできませんでした: %s(%d)",
 				source_name.u8(), xml_name, xShader->getLineNumber()
@@ -5301,7 +5331,7 @@ public:
 	bool loadShader(const char *name, const char *xml_name) {
 		// ファイル内容をロード
 		// UTF8で保存されているという前提で、バイナリ無変換で文字列化する
-		std::string hlsl_u8 = m_Storage.loadBinary(name);
+		std::string hlsl_u8 = m_Storage->loadBinary(name);
 		KSHADERID sid = KBank::getShaderBank()->addShaderFromHLSL(name, hlsl_u8.c_str());
 		if (sid) {
 			KBank::getShaderBank()->setTag(sid, xml_name); // 作成元の .xres ファイル名タグを追加
@@ -5319,12 +5349,19 @@ class CXresLoaderImpl: public KXresLoader {
 	CXresEdgeAnimation mXresEdgeAnimation;
 	CXresShader mXresShader;
 	CXresLoaderCallback *mCB;
-	KStorage m_Storage;
+	KStorage *m_Storage;
 public:
 	CXresLoaderImpl() {
+		mCB = nullptr;
+		m_Storage = nullptr;
 	}
-	void setup(KStorage &storage, CXresLoaderCallback *cb) {
+	virtual ~CXresLoaderImpl() {
+		K__DROP(m_Storage);
+	}
+	void setup(KStorage *storage, CXresLoaderCallback *cb) {
+		K__DROP(m_Storage);
 		m_Storage = storage;
+		K__GRAB(m_Storage);
 		mXresTexture.setup(storage, cb);
 		mXresClip.setup();
 		mXresEdgeSprite.setup(storage);
@@ -5334,19 +5371,19 @@ public:
 	}
 	virtual void loadFromFile(const char *xml_name, bool should_exists) override {
 		// ファイルの有無を調べる
-		if (!m_Storage.contains(xml_name)) {
+		if (!m_Storage->contains(xml_name)) {
 			if (should_exists) {
-				KLog::printError(u8"E_XRES_FILE_NOT_FOUND: %s", xml_name);
+				K__ERROR(u8"E_XRES_FILE_NOT_FOUND: %s", xml_name);
 			}
 			return;
 		}
-		std::string raw_text = m_Storage.loadBinary(xml_name, should_exists);
+		std::string raw_text = m_Storage->loadBinary(xml_name, should_exists);
 		loadFromText(raw_text.c_str(), xml_name);
 	}
 	virtual void loadFromText(const char *raw_text, const char *xml_name) override {
 		std::string xml_pp_u8 = K::strBinToUtf8(raw_text);
 		if (xml_pp_u8.empty()) {
-			KLog::printError(u8"E_FILELOADER_RES: ファイルには何も記述されていません: %s", xml_name);
+			K__ERROR(u8"E_FILELOADER_RES: ファイルには何も記述されていません: %s", xml_name);
 			return;
 		}
 
@@ -5354,14 +5391,14 @@ public:
 		std::string xml_u8;
 		KLuapp_text(&xml_u8, xml_pp_u8.c_str(), xml_name, nullptr, 0);
 		if (xml_u8.empty()) {
-			KLog::printError(u8"E_FILELOADER_PP: プリプロセッサの実行結果が空文字列になりました: %s", xml_name);
+			K__ERROR(u8"E_FILELOADER_PP: プリプロセッサの実行結果が空文字列になりました: %s", xml_name);
 			return;
 		}
 
 		// XMLを解析する
 		KXmlElement *xDoc = KXmlElement::createFromString(xml_u8.c_str(), xml_name);
 		if (xDoc == nullptr) {
-			KLog::printError(u8"E_FILELOADER_RES: XMLの構文解析でエラーが発生しました: %s", xml_name);
+			K__ERROR(u8"E_FILELOADER_RES: XMLの構文解析でエラーが発生しました: %s", xml_name);
 			return;
 		}
 		for (int i=0; i<xDoc->getChildCount(); i++) {
@@ -5398,13 +5435,13 @@ public:
 				mXresShader.load_ShaderNode(xElm, xml_name);
 				continue;
 			}
-			KLog::printWarning(u8"E_UNKNOWN_XML_NODE: 未知のノード %s をスキップしました: %s", xElm->getTag(), xml_name);
+			K__WARNING(u8"E_UNKNOWN_XML_NODE: 未知のノード %s をスキップしました: %s", xElm->getTag(), xml_name);
 		}
 		xDoc->drop();
 	}
 };
 
-KXresLoader * KXresLoader::create(KStorage &storage, CXresLoaderCallback *cb) {
+KXresLoader * KXresLoader::create(KStorage *storage, CXresLoaderCallback *cb) {
 	CXresLoaderImpl *impl = new CXresLoaderImpl();
 	impl->setup(storage, cb);
 	return impl;

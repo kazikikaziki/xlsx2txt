@@ -461,13 +461,14 @@ public:
 	int m_SoloGroup; // KAudioFlag_SOLO が設定されてているグループ番号。未設定ならば -1
 	float m_MasterVolume;
 	bool m_MasterMute;
-	KStorage m_Storage;
+	KStorage *m_Storage;
 
 	CAudioPlayer() {
 		m_MasterVolume = 1.0f;
 		m_MasterMute = false;
 		m_SoloGroup = -1;
-	
+		m_Storage = nullptr;
+
 		SSndGroup def_group;
 		def_group.name = "Default";
 		m_Groups.push_back(def_group);
@@ -761,7 +762,7 @@ public:
 	KSOUNDID playStreaming(const std::string &name, bool looping, int group_id) {
 		if (m_MasterMute) return 0;
 
-		std::string bin = m_Storage.loadBinary(name);
+		std::string bin = m_Storage->loadBinary(name);
 		if (bin.empty()) {
 			K__ERROR("Failed to open asset file: %s", name.c_str());
 			return 0;
@@ -786,7 +787,7 @@ public:
 	KSOUNDID playOneShot(const std::string &name, int group_id) {
 		if (m_MasterMute) return 0;
 		if (! m_SndImpl.isPooled(name)) {
-			std::string bin = m_Storage.loadBinary(name);
+			std::string bin = m_Storage->loadBinary(name);
 			if (bin.empty()) {
 				K__ERROR("Failed to open file: %s", name.c_str());
 				return 0;
@@ -911,7 +912,7 @@ static CAudioPlayer *g_AudioPlayer = nullptr;
 void KAudioPlayer::install() {
 	g_AudioPlayer = new CAudioPlayer();
 }
-void KAudioPlayer::install(KStorage &storage) {
+void KAudioPlayer::install(KStorage *storage) {
 	g_AudioPlayer = new CAudioPlayer();
 	g_AudioPlayer->m_Storage = storage;
 }

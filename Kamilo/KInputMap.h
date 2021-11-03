@@ -41,16 +41,16 @@ private:
 
 class IKeyboardKeyElm: public IKeyElm {
 public:
-	virtual void set_key(KKeyboard::Key key) = 0;
-	virtual KKeyboard::Key get_key() const = 0;
-	virtual KKeyboard::Modifiers get_modifiers() const = 0;
+	virtual void set_key(KKey key) = 0;
+	virtual KKey get_key() const = 0;
+	virtual KKeyModifiers get_modifiers() const = 0;
 	virtual const char * get_key_name() const = 0;
 };
 
 class IJoystickKeyElm: public IKeyElm {
 public:
-	virtual void set_button(KJoystick::Button key) = 0;
-	virtual KJoystick::Button get_button() const = 0;
+	virtual void set_button(KJoystickButton key) = 0;
+	virtual KJoystickButton get_button() const = 0;
 };
 
 enum KButtonFlag {
@@ -74,7 +74,7 @@ public:
 
 class KInputMap {
 public:
-	static void install();
+	static void install(KCoreKeyboard *kb, KCoreMouse *ms, KCoreJoystick *js);
 	static void uninstall();
 
 	// システムボタン（ポーズ中でも使える）
@@ -100,22 +100,22 @@ public:
 	}
 
 	// キーボードやゲームパッドにボタンを関連付ける
-	static void bindAppKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods=KKeyboard::MODIF_DONTCARE);
-	static void bindKeyboardKey(const std::string &button, KKeyboard::Key key, KKeyboard::Modifiers mods=KKeyboard::MODIF_DONTCARE, const std::string &tag="");
-	static void bindJoystickKey(const std::string &button, KJoystick::Button joybtn, const std::string &tag="");
-	static void bindJoystickAxis(const std::string &button, KJoystick::Axis axis, int halfrange, const std::string &tag="", float threshold=0.2f);
+	static void bindAppKey(const std::string &button, KKey key, KKeyModifiers mods=KKeyModifier_DONTCARE);
+	static void bindKeyboardKey(const std::string &button, KKey key, KKeyModifiers mods=KKeyModifier_DONTCARE, const std::string &tag="");
+	static void bindJoystickKey(const std::string &button, KJoystickButton joybtn, const std::string &tag="");
+	static void bindJoystickAxis(const std::string &button, KJoystickAxis axis, int halfrange, const std::string &tag="", float threshold=0.2f);
 	static void bindJoystickPov(const std::string &button, int xsign, int ysign, const std::string &tag="");
-	static void bindMouseKey(const std::string &button, KMouse::Button mousebtn, const std::string &tag="");
+	static void bindMouseKey(const std::string &button, KMouseButton mousebtn, const std::string &tag="");
 	static void bindKeySequence(const std::string &button, const char *keys[], const std::string &tag="");
 	static void unbindByTag(const std::string &button, const std::string &tag);
 	static int isConflict(const std::string &button1, const std::string &button2);
 	static void resetAllButtonStates();
 	static IKeyboardKeyElm * findKeyboardByTag(const std::string &button, const std::string &tag);
 	static IJoystickKeyElm * findJoystickByTag(const std::string &button, const std::string &tag);
-	static std::string getJoystickName(KJoystick::Button joybtn);
-	static std::string getKeyboardName(KKeyboard::Key key);
-	static bool getKeyboardFromName(const std::string &s, KKeyboard::Key *key);
-	static bool getJoystickFromName(const std::string &s, KJoystick::Button *btn);
+	static std::string getJoystickName(KJoystickButton joybtn);
+	static std::string getKeyboardName(KKey key);
+	static bool getKeyboardFromName(const std::string &s, KKey *key);
+	static bool getJoystickFromName(const std::string &s, KJoystickButton *btn);
 	static void setPollFlags(KPollFlags flags);
 
 	////////////////////////////////////////////////////////////////////////////////

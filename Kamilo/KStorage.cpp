@@ -118,7 +118,7 @@ public:
 		// KInputStream を取得
 		KInputStream file;
 		if (file.openFileName(realname)) {
-			K::outputDebugFmt("%s(%d): %s ==> OK", __FILE__, __LINE__, realname.c_str());
+			K::outputDebugStringFmt("%s(%d): %s ==> OK", __FILE__, __LINE__, realname.c_str());
 			return file;
 		}
 		return KInputStream();
@@ -310,27 +310,30 @@ KArchive * KArchive::createEmbeddedPacReader(const std::string &filename) {
 
 
 
-class CFileLoaderImpl {
+class CStorage: public KStorage {
 	std::vector<KArchive *> m_Archives;
 public:
-	CFileLoaderImpl() {
+	CStorage() {
 	}
-	~CFileLoaderImpl() {
+	virtual ~CStorage() {
 		clear();
 	}
-	void clear() {
+	virtual void clear() override {
 		for (size_t i=0; i<m_Archives.size(); i++) {
 			m_Archives[i]->drop();
 		}
 		m_Archives.clear();
 	}
-	void addArchive(KArchive *ar) {
+	virtual bool empty() const override {
+		return getLoaderCount() == 0;
+	}
+	virtual void addArchive(KArchive *ar) override {
 		if (ar) {
 			ar->grab();
 			m_Archives.push_back(ar);
 		}
 	}
-	bool addFolder(const std::string &dir) {
+	virtual bool addFolder(const std::string &dir) override {
 		KArchive *ar = KArchive::createFolderReader(dir.c_str());
 		if (ar) {
 			addArchive(ar);
@@ -342,7 +345,7 @@ public:
 			return false;
 		}
 	}
-	bool addZipFile(const std::string &filename, const std::string &password) {
+	virtual bool addZipFile(const std::string &filename, const std::string &password) override {
 		KArchive *ar = KArchive::createZipReader(filename.c_str(), password.c_str());
 		if (ar) {
 			addArchive(ar);
@@ -354,7 +357,7 @@ public:
 			return false;
 		}
 	}
-	bool addPacFile(const std::string &filename) {
+	virtual bool addPacFile(const std::string &filename) override {
 		KArchive *ar = KArchive::createPacReader(filename.c_str());
 		if (ar) {
 			addArchive(ar);
@@ -366,7 +369,7 @@ public:
 			return false;
 		}
 	}
-	bool addEmbeddedFiles() {
+	virtual bool addEmbeddedFiles() override {
 		KArchive *ar = KArchive::createEmbeddedReader();
 		if (ar) {
 			addArchive(ar);
@@ -378,7 +381,7 @@ public:
 			return false;
 		}
 	}
-	bool addEmbeddedPacFileLoader(const std::string &filename) {
+	virtual bool addEmbeddedPacFileLoader(const std::string &filename) override {
 		KArchive *ar = KArchive::createEmbeddedPacReader(filename.c_str());
 		if (ar) {
 			addArchive(ar);
@@ -390,7 +393,7 @@ public:
 			return false;
 		}
 	}
-	KInputStream getInputStream(const std::string &filename, bool should_exists) {
+	virtual KInputStream getInputStream(const std::string &filename, bool should_exists) const override {
 		if (filename.empty()) {
 			K__ERROR("Empty filename");
 			return KInputStream();
@@ -425,68 +428,26 @@ public:
 		}
 		return KInputStream();
 	}
-	bool contains(const std::string &filename) {
+	virtual bool contains(const std::string &filename) const override {
 		KInputStream file = getInputStream(filename, false);
 		return file.isOpen();
 	}
-	std::string loadBinary(const std::string &filename, bool should_exists) {
+	virtual std::string loadBinary(const std::string &filename, bool should_exists) const override {
 		KInputStream file = getInputStream(filename, should_exists);
 		return file.readBin();
 	}
-	KArchive * getLoader(int index) const {
+	virtual KArchive * getLoader(int index) override {
 		return m_Archives[index];
 	}
-	int getLoaderCount() const {
+	virtual int getLoaderCount() const override {
 		return (int)m_Archives.size();
 	}
-}; // CFileLoaderImpl
+}; // CStorage
 
-static KStorage g_Storage;
 
-#pragma region KStorage
-KStorage & KStorage::getGlobal() {
-	return g_Storage;
+KStorage * createStorage() {
+	return new CStorage();
 }
 
-KStorage::KStorage() {
-	m_Impl = std::shared_ptr<CFileLoaderImpl>(new CFileLoaderImpl());
-}
-void KStorage::clear() {
-	return m_Impl->clear();
-}
-void KStorage::addArchive(KArchive *cb) {
-	return m_Impl->addArchive(cb);
-}
-bool KStorage::addFolder(const std::string &dir) {
-	return m_Impl->addFolder(dir);
-}
-bool KStorage::addZipFile(const std::string &filename, const std::string &password) {
-	return m_Impl->addZipFile(filename, password);
-}
-bool KStorage::addPacFile(const std::string &filename) {
-	return m_Impl->addPacFile(filename);
-}
-bool KStorage::addEmbeddedFiles() {
-	return m_Impl->addEmbeddedFiles();
-}
-bool KStorage::addEmbeddedPacFileLoader(const std::string &filename) {
-	return m_Impl->addEmbeddedPacFileLoader(filename);
-}
-KInputStream KStorage::getInputStream(const std::string &filename, bool should_exists) {
-	return m_Impl->getInputStream(filename, should_exists);
-}
-std::string KStorage::loadBinary(const std::string &filename, bool should_exists) {
-	return m_Impl->loadBinary(filename, should_exists);
-}
-bool KStorage::contains(const std::string &filename) {
-	return m_Impl->contains(filename);
-}
-KArchive * KStorage::getLoader(int index) {
-	return m_Impl->getLoader(index);
-}
-int KStorage::getLoaderCount() {
-	return m_Impl->getLoaderCount();
-}
-#pragma endregion // KStorage
 
 } // namespace

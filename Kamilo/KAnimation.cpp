@@ -24,7 +24,7 @@ public:
 	static void clipAnimate(KNode *node, const KClipRes *clip, float frame) {
 		KSpriteDrawable *co = KSpriteDrawable::of(node);
 		if (co == nullptr) {
-			KLog::printWarning("SPRITE ANIMATION BUT NO SPRITE RENDERER!");
+			K__WARNING("SPRITE ANIMATION BUT NO SPRITE RENDERER!");
 			return;
 		}
 		int page_index = clip->getPageByFrame(frame, nullptr);
@@ -566,13 +566,13 @@ bool KAnimation::setMainClipAlias(const std::string &alias, bool keep) {
 	// エイリアスから元のクリップ名を得る
 	const std::string &name = m_AliasMap[alias];
 	if (name.empty()) {
-		KLog::printWarning("Animation alias named '%s' does not exist", alias.c_str());
+		K__WARNING("Animation alias named '%s' does not exist", alias.c_str());
 		return setMainClip(nullptr);
 	}
 	// 新しいクリップを設定する
 	KClipRes *clip = KBank::getAnimationBank()->find_clip(name);
 	if (clip == nullptr) {
-		KLog::printWarning("No animation named '%s' (alias '%s')", name.c_str(), alias.c_str());
+		K__WARNING("No animation named '%s' (alias '%s')", name.c_str(), alias.c_str());
 	}
 	return setMainClip(clip, keep);
 }

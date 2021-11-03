@@ -1281,27 +1281,24 @@ private:
 	void guiInspectorPreference() {
 		if (ImGui::TreeNode(u8"ログ")) {
 			{
-				bool b = KLog::getState(KLog::STATE_LEVEL_INFO) != 0;
-				if (ImGui::Checkbox(u8"情報", &b)) {
-					KLog::setLevelVisible(KLog::LEVEL_INF, b);
+				const char * levels[KLogLv_ENUM_MAX] {
+					"NONE",
+					"VERBOSE",
+					"DEBUG",
+					"INFO",
+					"WARNING",
+					"ERROR",
+					"CRITICAL"
+				};
+				KLogLv ll = KLogger::get()->getLevel();
+				if (ImGui::Combo(u8"出力レベル", (int*)&ll, levels, KLogLv_ENUM_MAX)) {
+					KLogger::get()->setLevel(ll);
 				}
 			}
 			{
-				bool b = KLog::getState(KLog::STATE_LEVEL_DEBUG) != 0;
-				if (ImGui::Checkbox(u8"デバッグ", &b)) {
-					KLog::setLevelVisible(KLog::LEVEL_DBG, b);
-				}
-			}
-			{
-				bool b = KLog::getState(KLog::STATE_LEVEL_VERBOSE) != 0;
-				if (ImGui::Checkbox(u8"詳細", &b)) {
-					KLog::setLevelVisible(KLog::LEVEL_VRB, b);
-				}
-			}
-			{
-				bool b = KLog::getState(KLog::STATE_HAS_OUTPUT_CONSOLE) != 0;
-				if (ImGui::Checkbox(u8"コンソール", &b)) {
-					KLog::setOutputConsole(b, true);
+				bool b = KLogger::get()->getEmitter()->getConsoleOutput();
+				if (ImGui::Checkbox(u8"コンソールに出力", &b)) {
+					KLogger::get()->getEmitter()->setConsoleOutput(b);
 				}
 			}
 			ImGui::TreePop();
@@ -1474,7 +1471,7 @@ void KDebugGui::K_DebugGui_ImageExportButton(const char *label, KTEXID texid, co
 			KImage img = tex->exportTextureImage(alphamask ? 3 : -1);
 			if (!img.empty()) {
 				img.saveToFileName(filename);
-				KLog::printInfo("Export texture image %s", filename);
+				K__PRINT("Export texture image %s", filename);
 			}
 		}
 	}
@@ -2011,7 +2008,7 @@ void KDebugGui::K_DebugGui_Mouse() {
 	// ウィンドウ座標系でのマウス
 	int lpos_x = 0;
 	int lpos_y = 0;
-	KWindow::getMouseCursorPos(&lpos_x, &lpos_y);
+	KEngine::getWindow()->getMouseCursorPos(&lpos_x, &lpos_y);
 	{
 		KRecti viewport = KScreen::getGameViewportRect();
 		ImGui::Text("In screen: (%d, %d)", gpos_x, gpos_y);

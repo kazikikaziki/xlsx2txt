@@ -49,10 +49,12 @@ public:
 	}
 
 	// Float属性
+	bool queryAttrFloat(const char *name, float *p_value) const;
 	float getAttrFloat(const char *name, float def=0.0f) const;
 	void setAttrFloat(const char *name, float value);
 	
 	// Int属性
+	bool queryAttrInt(const char *name, int *p_value) const;
 	int getAttrInt(const char *name, int def=0) const;
 	void setAttrInt(const char *name, int value);
 

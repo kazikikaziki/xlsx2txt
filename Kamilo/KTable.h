@@ -4,8 +4,18 @@
 
 namespace Kamilo {
 
-class KExcelFile;
-class KInputStream;
+class KDataGrid;
+
+class KTableCallback {
+public:
+	/// 文字列を整数または実数として解釈する必要があるときに、その直前に呼ばれる。
+	/// 必要に応じて s を書き換えることができる。
+	/// (例)
+	/// "010" ==> "10" (頭のゼロをとる。"010" だと 8 進数の 10 とみなされてしまう）
+	/// ""    ==> "0" （空文字列を 0 とみなす）
+	/// "n/a" ==> "0" （"n/a"という言葉が入っていたら 0 とみなす）
+	virtual void onTableNumericText(std::string &s) = 0;
+};
 
 /// 行と列で定義されるデータテーブルを扱う。
 /// 単純な「名前＝値」の形式のテーブルで良ければ KNamedValues を使う
@@ -14,6 +24,8 @@ public:
 	KTable();
 	bool empty() const;
 	void clear();
+	void setCallback(KTableCallback *cb);
+	std::string getSourceLocation(int *col=nullptr, int *row=nullptr) const;
 
 	/// Excel シートからテーブルオブジェクトを作成する
 	/// 
@@ -48,11 +60,11 @@ public:
 	/// -----+--------+-------+-----+-----+--
 	///    8 |        |       |     |     |
 	/// @endcode
-	/// この状態で loadFromExcelFile(excel, sheetname, "@BEGIN", "@END") を呼び出すと、A1 から C7 の範囲を KTable に読み込むことになる
+	/// この状態で loadFromDataGrid(sheet, "@BEGIN") を呼び出すと、A1 から C7 の範囲を KTable に読み込むことになる
 	/// このようにして取得した KTable は以下のような値を返す
 	/// @code
-	///     table.getDataColIndexByName("KEY") ==> 0
-	///     table.getDataColIndexByName("VAL") ==> 1
+	///     table.findColumnByName("KEY") ==> 0
+	///     table.findColumnByName("VAL") ==> 1
 	///     table.getDataString(0, 0) ==> "one"
 	///     table.getDataString(1, 0) ==> "100"
 	///     table.getDataString(0, 2) ==> "three"
@@ -60,27 +72,10 @@ public:
 	///     table.getRowMarker(0) ==> nullptr  <---- セルA3の内容
 	///     table.getRowMarker(1) ==> "//"     <---- セルA4の内容
 	/// @endcode
-	bool loadFromExcelFile(const KExcelFile &file, const std::string &sheet_name, const std::string &top_cell_text, const std::string &bottom_cell_text, bool mute=false);
-
-	/// テーブルを作成する。詳細は loadFromExcelFile を参照
-	/// @param xlsx .xlsx ファイルオブジェクト
-	/// @param filename ファイル名（エラーメッセージの表示などで使用）
-	/// @param sheetname シート名
-	/// @param top_cell_text テーブル範囲の左上にあるセルのテキスト。このテキストと一致するセルを探し、それをテーブル左上とする
-	/// @param btm_cell_text テーブル範囲の左下（右下ではない）にあるセルのテキスト。このテキストと一致するセルを探し、それをテーブル左下とする
-	bool loadFromStream(KInputStream &xlsx, const std::string &filename, const std::string &sheetname, const std::string &top_cell_text, const std::string &btm_cell_text, bool mute=false);
-
-	/// テーブルを作成する。詳細は loadFromExcelFile を参照
-	/// @param xlsx_bin  .xlsx ファイルのバイナリデータ
-	/// @param xlsx_size .xlsx ファイルのバイナリバイト数
-	/// @param filename  ファイル名（エラーメッセージの表示などで使用）
-	/// @param sheetname シート名
-	/// @param top_cell_text テーブル範囲の左上にあるセルのテキスト。このテキストと一致するセルを探し、それをテーブル左上とする
-	/// @param btm_cell_text テーブル範囲の左下（右下ではない）にあるセルのテキスト。このテキストと一致するセルを探し、それをテーブル左下とする
-	bool loadFromExcelMemory(const void *xlsx_bin, size_t xlsx_size, const std::string &filename, const std::string &sheetname, const std::string &top_cell_text, const std::string &btm_cell_text, bool mute=false);
+	bool loadFromDataGrid(const KDataGrid &grid, const std::string &topleft="", bool mute=false);
 
 	/// カラム名のインデックスを返す。カラム名が存在しない場合は -1 を返す
-	int getDataColIndexByName(const std::string &column_name) const;
+	int findColumnByName(const std::string &column_name) const;
 
 	/// 指定された列に対応するカラム名を返す
 	std::string getColumnName(int col) const;
@@ -91,39 +86,90 @@ public:
 	/// データ行数
 	int getDataRowCount() const;
 
+	/// このテーブルがより大きなテーブルの一部から抜き出されたものである場合、元のテーブル内でのセル位置を得る
+	bool getCellCoordInSource(int col, int row, int *col_in_file, int *row_in_file) const;
+
+	/// col 列のなかから、指定された value を探して行インデックス（ゼロ起算）を返す
+	int findRowInColumnByString(int col, const std::string &value) const;
+	int findRowInColumnByInt(int col, int value) const;
+
 	/// データ行にユーザー定義のマーカーが設定されているなら、それを返す。
 	/// 例えば行全体がコメントアウトされている時には "#" や "//" を返すなど。
-	const char * getRowMarker(int row) const;
+	std::string getRowMarker(int row) const;
 
-	/// このテーブルのデータ文字列を得る(UTF8)
-	/// @param col データ列インデックス（ゼロ起算）
-	/// @param row データ行インデックス（ゼロ起算）
+	void setKeyColumn(int col); // キーカラムを設定する
+
+	/// 指定セルのデータ文字列を得る(UTF8)
+	/// @param col セル列（ゼロ起算）
+	/// @param row セル行（ゼロ起算）
 	/// @retval utf8文字列またはnullptr
-	const char * getDataString(int col, int row) const;
-	std::string getDataStringStd(int col, int row) const;
+	bool queryDataString(int col, int row, std::string *p_val) const;
+	bool queryDataInt(int col, int row, int *p_val) const;
+	bool queryDataFloat(int col, int row, float *p_val) const;
 
-	/// このテーブルのデータ整数を得る
-	/// @param col データ列インデックス（ゼロ起算）
-	/// @param row データ行インデックス（ゼロ起算）
-	/// @param def セルが存在しない時の戻り値
-	int getDataInt(int col, int row, int def=0) const;
-	bool getDataIntTry(int col, int row, int *p_val) const;
+	// キー列内の値 key（文字列）に対応する col 列の値を得る
+	// @see setKeyColumn
+	bool queryDataStringByKey(int select_col, const std::string &value_in_keycol, std::string *p_val) const;
+	bool queryDataIntByKey(int select_col, const std::string &value_in_keycol, int *p_val) const;
+	bool queryDataFloatByKey(int select_col, const std::string &value_in_keycol, float *p_val) const;
 
-	/// このテーブルのデータ実数を得る
-	/// @param col データ列インデックス（ゼロ起算）
-	/// @param row データ行インデックス（ゼロ起算）
-	/// @param def セルが存在しない時の戻り値
-	float getDataFloat(int col, int row, float def=0.0f) const;
-	bool getDataFloatTry(int col, int row, float *p_val) const;
+	// キー列内の値 key （整数）に対応する col 列の値を得る
+	// Excel シートなどでは整数のつもりでも 1.00000001 のように記録されている場合があるので、その場合は文字列で "1" を検索しても見つからない
+	// @see setKeyColumn
+	bool queryDataStringByKey(int select_col, int value_in_keycol, std::string *p_val) const;
+	bool queryDataIntByKey(int select_col, int value_in_keycol, int *p_val) const;
+	bool queryDataFloatByKey(int select_col, int value_in_keycol, float *p_val) const;
 
-	/// データ列とデータ行を指定し、それが定義されている列と行を得る
-	bool getDataSource(int col, int row, int *col_in_file, int *row_in_file) const;
+	// queryDataString の簡易版
+	std::string getDataString(int col, int row) const {
+		std::string val;
+		queryDataString(col, row, &val);
+		return val;
+	}
+	int getDataInt(int col, int row) const {
+		int val = 0;
+		queryDataInt(col, row, &val);
+		return val;
+	}
+	float getDataFloat(int col, int row) const {
+		float val = 0;
+		queryDataFloat(col, row, &val);
+		return val;
+	}
 
-	int findRowByIntData(int col, int value) const;
-
-	// value に一致する文字列を探す
-	// trim 先頭と末尾の空白を取り除いて比較する？
-	int findRowByStringData(int col, const std::string &value, bool trim=true) const;
+	// queryDataStringByKey の簡易版
+	std::string getDataStringByKey(int select_col, const std::string &value_in_keycol) const {
+		std::string val;
+		queryDataStringByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
+	int getDataIntByKey(int select_col, const std::string &value_in_keycol) const {
+		int val;
+		queryDataIntByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
+	float getDataFloatByKey(int select_col, const std::string &value_in_keycol) const {
+		float val;
+		queryDataFloatByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
+	
+	// queryDataStringByIntKey の簡易版
+	std::string getDataStringByKey(int select_col, int value_in_keycol) const {
+		std::string val;
+		queryDataStringByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
+	int getDataIntByIntKey(int select_col, int value_in_keycol) const {
+		int val;
+		queryDataIntByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
+	float getDataFloatByKey(int select_col, int value_in_keycol) const {
+		float val;
+		queryDataFloatByKey(select_col, value_in_keycol, &val);
+		return val;
+	}
 
 private:
 	class Impl;

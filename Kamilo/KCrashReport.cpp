@@ -693,8 +693,8 @@ static bool _ErrorCheckProcess(const char *args, const char *comment_u8, const c
 			const char *tmpname = "~log.tmp";
 			CopyFileA(include_log_file, tmpname, true);
 			{
-				KLogFile lf;
-				lf.open(tmpname);
+				KLogFileOutput lf;
+				lf.open(tmpname, true);
 				lf.clampBySeparator(-1);
 				lf.close();
 			}

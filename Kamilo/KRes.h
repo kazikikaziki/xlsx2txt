@@ -554,7 +554,7 @@ public:
 	KLuaBank();
 	~KLuaBank();
 
-	void setStorage(KStorage &storage);
+	void setStorage(KStorage *storage);
 	void setCallback(KLuaBankCallback *cb);
 
 	lua_State * addEmptyScript(const std::string &name);
@@ -570,7 +570,7 @@ private:
 	std::unordered_map<std::string, lua_State *> m_Items;
 	mutable std::recursive_mutex m_Mutex;
 	KLuaBankCallback *m_Cb;
-	KStorage m_Storage;
+	KStorage *m_Storage;
 };
 
 
@@ -644,10 +644,10 @@ public:
 	/// paths: ファイル名とフォルダ名の情報
 	/// cellsize: ブロック化サイズ。キャッシュファイルを保存する時に使う。
 	/// flags: キャッシュ生成用のフラグ。キャッシュファイルを保存する時に使う。
-	static bool loadSpriteList(KStorage &storage, KSpriteList *sprites, const std::string &imageListName);
+	static bool loadSpriteList(KStorage *storage, KSpriteList *sprites, const std::string &imageListName);
 
 	static void makeSpritelistFromPack(const KImgPackR &pack, const KImage &pack_image, const KPath &tex_name, KSpriteList *sprites);
-	static KImgPackR loadPackR_fromCache(KStorage &storage, const std::string &imageListName, KImage *image);
+	static KImgPackR loadPackR_fromCache(KStorage *storage, const std::string &imageListName, KImage *image);
 };
 
 
@@ -803,7 +803,7 @@ public:
 
 class KXresLoader: public virtual KRef {
 public:
-	static KXresLoader * create(KStorage &storage, CXresLoaderCallback *cb);
+	static KXresLoader * create(KStorage *storage, CXresLoaderCallback *cb);
 	virtual void loadFromFile(const char *xml_name, bool should_exists) = 0;
 	virtual void loadFromText(const char *raw_text, const char *xml_name) = 0;
 };

@@ -6,7 +6,7 @@
 #include "KInternal.h"
 #include "KKeyboard.h"
 
-#define USE_WINDOW_THREAD 0
+#define USE_WINDOW_THREAD 0 // ウィンドウリサイズ時にゲーム画面がリサイズされない？
 
 #if USE_WINDOW_THREAD
 #include <mutex>
@@ -68,7 +68,7 @@ static const wchar_t *CLASS_NAME = L"K_WND_CLASS_NAME";
 
 static LRESULT CALLBACK _WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-class CWin32Window {
+class CWin32Window: public KCoreWindow {
 	static void makeFullFill(HWND hWnd, bool val) {
 		if (val) {
 			SetMenu(hWnd, nullptr);
@@ -139,7 +139,7 @@ class CWin32Window {
 public:
 	static constexpr int HOTKEY_SNAPSHOT_DESKTOP = 1;
 	static constexpr int HOTKEY_SNAPSHOT_CLIENT  = 2;
-	KWindow::Callback *m_cb;
+	KWindowCallback *m_cb;
 	HWND m_hWnd;
 	LONG_PTR m_restore_style;
 	LONG_PTR m_restore_style_ex;
@@ -153,7 +153,7 @@ public:
 	CWin32Window() {
 		zero_clear();
 	}
-	~CWin32Window() {
+	virtual ~CWin32Window() {
 		shutdown();
 	}
 	void zero_clear() {
@@ -167,10 +167,6 @@ public:
 		m_kill_screensaver = false;
 		m_mouse_in_window = false;
 		m_kill_snapshot = false;
-	}
-	void setCallback(KWindow::Callback *cb) {
-		WND_CHECK;
-		m_cb = cb;
 	}
 	bool init(int w, int h, const char *title_u8) {
 		m_mouse_in_window = false;
@@ -213,18 +209,14 @@ public:
 		}
 		zero_clear();
 	}
-	void * getHandle() const {
+	virtual void setCallback(KWindowCallback *cb) override {
+		WND_CHECK;
+		m_cb = cb;
+	}
+	virtual void * getHandle() const override {
 		return m_hWnd;
 	}
-	void setClientSize(int cw, int ch) {
-		WND_CHECK;
-		if (cw < 0) cw = 0;
-		if (ch < 0) ch = 0;
-		int ww, hh;
-		computeWindowSize(m_hWnd, cw, ch, &ww, &hh);
-		SetWindowPos(m_hWnd, nullptr, 0, 0, ww, hh, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOMOVE);
-	}
-	void setTitle(const char *text_u8) {
+	virtual void setTitle(const char *text_u8) override {
 		WND_CHECK;
 		if (text_u8) {
 			wchar_t ws[256] = {0};
@@ -232,123 +224,145 @@ public:
 			SetWindowTextW(m_hWnd, ws);
 		}
 	}
-	void setWindowPosition(int x, int y) {
-		WND_CHECK;
-		SetWindowPos(m_hWnd, nullptr, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOSIZE);
+
+	virtual bool isWindowVisible() const override {
+		return IsWindowVisible(m_hWnd) != 0;
 	}
-	void setWindowVisible(bool value) {
+	virtual void setWindowVisible(bool value) override {
 		WND_CHECK;
 		ShowWindow(m_hWnd, value ? SW_SHOW : SW_HIDE);
 	}
-	bool isWindowVisible() const {
-		return IsWindowVisible(m_hWnd) != 0;
-	}
-	void getClientSize(int *cw, int *ch) const {
+
+	virtual void getClientSize(int *cw, int *ch) const override {
 		WND_CHECK;
 		RECT rc = {0, 0, 0, 0};
 		GetClientRect(m_hWnd, &rc); // GetClientRect が失敗する可能性に注意
 		if (cw) *cw = rc.right - rc.left;
 		if (ch) *ch = rc.bottom - rc.top;
 	}
-	void getWindowPosition(int *x, int *y) const {
+	virtual void setClientSize(int cw, int ch) override {
+		WND_CHECK;
+		if (cw < 0) cw = 0;
+		if (ch < 0) ch = 0;
+		int ww, hh;
+		computeWindowSize(m_hWnd, cw, ch, &ww, &hh);
+		SetWindowPos(m_hWnd, nullptr, 0, 0, ww, hh, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOMOVE);
+	}
+
+	virtual void getWindowPosition(int *x, int *y) const override {
 		WND_CHECK;
 		RECT rect;
 		GetWindowRect(m_hWnd, &rect);
 		if (x) *x = rect.left;
 		if (y) *y = rect.top;
 	}
-	void screenToClient(int *x, int *y) const {
+	virtual void setWindowPosition(int x, int y) override {
+		WND_CHECK;
+		SetWindowPos(m_hWnd, nullptr, x, y, 0, 0, SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOSIZE);
+	}
+
+	virtual void getWindowNormalRect(int *x, int *y, int *w, int *h) const override {
+		WINDOWPLACEMENT wp;
+		wp.length = sizeof(wp);
+		GetWindowPlacement(m_hWnd, &wp);
+		if (x) *x = wp.rcNormalPosition.left;
+		if (y) *y = wp.rcNormalPosition.top;
+		if (w) *w = wp.rcNormalPosition.right - wp.rcNormalPosition.left;
+		if (h) *h = wp.rcNormalPosition.bottom - wp.rcNormalPosition.top;
+	}
+	virtual void setWindowNormalRect(int x, int y, int w, int h) override {
+		WINDOWPLACEMENT wp;
+		wp.length = sizeof(wp);
+		wp.showCmd = SW_SHOW;
+		wp.rcNormalPosition.left   = x;
+		wp.rcNormalPosition.top    = y;
+		wp.rcNormalPosition.right  = x + w;
+		wp.rcNormalPosition.bottom = y + h;
+		SetWindowPlacement(m_hWnd, &wp);
+	}
+
+	virtual void screenToClient(int *x, int *y) const override {
 		WND_CHECK;
 		POINT p = {*x, *y};
 		ScreenToClient(m_hWnd, &p);
 		if (x) *x = p.x;
 		if (y) *y = p.y;
 	}
-	void clientToScreen(int *x, int *y) const {
+	virtual void clientToScreen(int *x, int *y) const override {
 		WND_CHECK;
 		POINT p = {*x, *y};
 		ClientToScreen(m_hWnd, &p);
 		if (x) *x = p.x;
 		if (y) *y = p.y;
 	}
-	bool isMaximized() const {
+
+	virtual bool isMaximized() const override {
 		WND_CHECK;
 		return IsZoomed(m_hWnd) != 0;
 	}
-	bool isIconified() const {
+	virtual bool isIconified() const override {
 		WND_CHECK;
 		return IsIconic(m_hWnd) != 0;
 	}
-	bool isWindowFocused() const {
+	virtual bool isWindowFocused() const override {
 		return GetForegroundWindow() == m_hWnd;
 	}
-	void fullscreenWindow() {
+	virtual void fullscreenWindow() {
 		WND_CHECK;
 	}
-	void maximizeWindow() {
+	virtual void maximizeWindow() override {
 		WND_CHECK;
 		ShowWindow(m_hWnd, SW_MAXIMIZE);
 	}
-	void iconifyWindow() {
-		WND_CHECK;
-		ShowWindow(m_hWnd, SW_MINIMIZE);
-	}
-	void restoreWindow() {
+	virtual void restoreWindow() override {
 		WND_CHECK;
 		ShowWindow(m_hWnd, SW_RESTORE);
 	}
-	/*
-	void setIcon(const KIcon &icon) {
-		HICON hIcon = (HICON)icon.getHandle();
-		SendMessageW(m_hWnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-		SendMessageW(m_hWnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
-	}
-	*/
-	int getAttribute(KWindow::Attr attr) {
+	virtual int getAttribute(KWindowAttr attr) const override {
 		WND_CHECK;
 		switch (attr) {
-		case KWindow::ATTR_HAS_BORDER:          return hasWindowStyle(m_hWnd, WS_CAPTION) && hasWindowStyle(m_hWnd, WS_THICKFRAME);
-		case KWindow::ATTR_HAS_TITLE:           return hasWindowStyle(m_hWnd, WS_CAPTION);
-		case KWindow::ATTR_HAS_MAXIMIZE_BUTTON: return hasWindowStyle(m_hWnd, WS_MAXIMIZEBOX);
-		case KWindow::ATTR_HAS_ICONIFY_BUTTON:  return hasWindowStyle(m_hWnd, WS_MINIMIZEBOX);
-		case KWindow::ATTR_HAS_CLOSE_BUTTON:    return hasWindowStyle(m_hWnd, WS_SYSMENU);
-		case KWindow::ATTR_RESIZABLE:           return hasWindowStyle(m_hWnd, WS_THICKFRAME);
-		case KWindow::ATTR_TOPMOST:             return hasWindowStyleEx(m_hWnd, WS_EX_TOPMOST);
-		case KWindow::ATTR_KILL_ALT_F10:        return m_kill_alt_f10;
-		case KWindow::ATTR_KILL_SNAPSHOT:       return m_kill_snapshot;
+		case KWindowAttr_HAS_BORDER:          return hasWindowStyle(m_hWnd, WS_CAPTION) && hasWindowStyle(m_hWnd, WS_THICKFRAME);
+		case KWindowAttr_HAS_TITLE:           return hasWindowStyle(m_hWnd, WS_CAPTION);
+		case KWindowAttr_HAS_MAXIMIZE_BUTTON: return hasWindowStyle(m_hWnd, WS_MAXIMIZEBOX);
+		case KWindowAttr_HAS_ICONIFY_BUTTON:  return hasWindowStyle(m_hWnd, WS_MINIMIZEBOX);
+		case KWindowAttr_HAS_CLOSE_BUTTON:    return hasWindowStyle(m_hWnd, WS_SYSMENU);
+		case KWindowAttr_RESIZABLE:           return hasWindowStyle(m_hWnd, WS_THICKFRAME);
+		case KWindowAttr_TOPMOST:             return hasWindowStyleEx(m_hWnd, WS_EX_TOPMOST);
+		case KWindowAttr_KILL_ALT_F10:        return m_kill_alt_f10;
+		case KWindowAttr_KILL_SNAPSHOT:       return m_kill_snapshot;
 		}
 		return 0;
 	}
-	void setAttribute(KWindow::Attr attr, int value) {
+	virtual void setAttribute(KWindowAttr attr, int value) override {
 		WND_CHECK;
 		switch (attr) {
-		case KWindow::ATTR_HAS_BORDER:
+		case KWindowAttr_HAS_BORDER:
 			// 境界線の有無は WS_THICKFRAME と WS_CAPTION の値で決まる
 			setWindowStyle(m_hWnd, WS_THICKFRAME, value);
 			setWindowStyle(m_hWnd, WS_CAPTION, value);
 			break;
 
-		case KWindow::ATTR_HAS_TITLE:
+		case KWindowAttr_HAS_TITLE:
 			setWindowStyle(m_hWnd, WS_CAPTION, value);
 			break;
 
-		case KWindow::ATTR_RESIZABLE:
+		case KWindowAttr_RESIZABLE:
 			setWindowStyle(m_hWnd, WS_THICKFRAME, value);
 			break;
 
-		case KWindow::ATTR_HAS_MAXIMIZE_BUTTON:
+		case KWindowAttr_HAS_MAXIMIZE_BUTTON:
 			setWindowStyle(m_hWnd, WS_MAXIMIZEBOX, value);
 			break;
 
-		case KWindow::ATTR_HAS_ICONIFY_BUTTON:
+		case KWindowAttr_HAS_ICONIFY_BUTTON:
 			setWindowStyle(m_hWnd, WS_MINIMIZEBOX, value);
 			break;
 
-		case KWindow::ATTR_HAS_CLOSE_BUTTON:
+		case KWindowAttr_HAS_CLOSE_BUTTON:
 			setWindowStyle(m_hWnd, WS_SYSMENU, value);
 			break;
 	
-		case KWindow::ATTR_TOPMOST:
+		case KWindowAttr_TOPMOST:
 			setWindowStyleEx(m_hWnd, WS_EX_TOPMOST, value);
 			SetWindowPos(
 				m_hWnd, 
@@ -356,15 +370,15 @@ public:
 				0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE);
 			break;
 
-		case KWindow::ATTR_FULLFILL:
+		case KWindowAttr_FULLFILL:
 			makeFullFill(m_hWnd, value);
 			break;
 
-		case KWindow::ATTR_KILL_ALT_F10:
+		case KWindowAttr_KILL_ALT_F10:
 			m_kill_alt_f10 = (value != 0);
 			break;
 
-		case KWindow::ATTR_KILL_SNAPSHOT:
+		case KWindowAttr_KILL_SNAPSHOT:
 			m_kill_snapshot = value;
 			setSnapshotKilling(value);
 			break;
@@ -377,7 +391,7 @@ public:
 			// PtrScr をホットキーとして登録して、WM_HOTKEY 経由で PrtScr の押下イベントを受け取れるようにする
 			// https://gamedev.stackexchange.com/questions/20446/does-vk-snapshot-not-send-a-wm-keydown-only-wm-keyup
 			RegisterHotKey(m_hWnd, HOTKEY_SNAPSHOT_DESKTOP, 0, VK_SNAPSHOT);
-			RegisterHotKey(m_hWnd, HOTKEY_SNAPSHOT_CLIENT, KKeyboard::MODIF_ALT, VK_SNAPSHOT);
+			RegisterHotKey(m_hWnd, HOTKEY_SNAPSHOT_CLIENT, KKeyModifier_ALT, VK_SNAPSHOT);
 			_DEBUG_PRINT(u8"[PrtScr] を占有しました: HWND=0x%X", m_hWnd);
 		} else {
 			UnregisterHotKey(m_hWnd, HOTKEY_SNAPSHOT_DESKTOP);
@@ -385,7 +399,7 @@ public:
 			_DEBUG_PRINT(u8"[PrtScr] を解放しました: HWND=0x%X", m_hWnd);
 		}
 	}
-	void command(const char *cmd, void *data) {
+	virtual void command(const char *cmd, void *data) override {
 		WND_CHECK;
 		if (_streq(cmd, "set_cursor_arrow")) {
 			SetCursor(LoadCursor(nullptr, IDC_ARROW));
@@ -408,7 +422,7 @@ public:
 			return;
 		}
 	}
-	bool getMouseCursorPos(int *cx, int *cy) const {
+	virtual bool getMouseCursorPos(int *cx, int *cy) const override {
 		WND_CHECK;
 		POINT p = {0, 0};
 		RECT rc = {0, 0, 0, 0};
@@ -419,6 +433,58 @@ public:
 		if (cy) *cy = p.y;
 		if (p.x < rc.left || rc.right <= p.x) return false;
 		if (p.y < rc.top || rc.bottom <= p.y) return false;
+		return false;
+	}
+
+	virtual bool getOwnerDisplayRect(int *x, int *y, int *w, int *h) const {
+		// 現在のウィンドウ範囲
+		RECT rect = {0, 0, 0, 0};
+		GetWindowRect(m_hWnd, &rect);
+
+		// ウィンドウ範囲を一番多く含んでいるモニター
+		HMONITOR hMonitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST);
+		MONITORINFO mi;
+		mi.cbSize = sizeof(MONITORINFO);
+		GetMonitorInfoA(hMonitor, &mi);
+
+		if (x) *x = mi.rcMonitor.left;
+		if (y) *y = mi.rcMonitor.top;
+		if (w) *w = mi.rcMonitor.right - mi.rcMonitor.left;
+		if (h) *h = mi.rcMonitor.bottom - mi.rcMonitor.top;
+		return true;
+	}
+
+	virtual bool adjustWindowPosAndSize(int *_x, int *_y, int *_w, int *_h) const {
+		int x = *_x;
+		int y = *_y;
+		int w = *_w;
+		int h = *_h;
+		int MIN_WNDSIZE = 160;
+		int dispX, dispY, dispW, dispH;
+		if (getOwnerDisplayRect(&dispX, &dispY, &dispW, &dispH)) {
+			if (dispX + dispW < x + w) {
+				x -= (x + w) - (dispX + dispW);
+			}
+			if (dispY + dispH < y + h) {
+				y -= (y + h) - (dispY + dispH);
+			}
+			if (x < dispX) {
+				x = dispX;
+			}
+			if (y < dispY) {
+				y = dispY;
+			}
+			if (w >= MIN_WNDSIZE && h >= MIN_WNDSIZE) {
+				*_x = x;
+				*_y = y;
+				*_w = w;
+				*_h = h;
+				return true;
+			} else {
+				// 記録されているウィンドウサイズが小さすぎる
+				// 既定のウィンドウサイズのままにしておく
+			}
+		}
 		return false;
 	}
 
@@ -549,18 +615,18 @@ public:
 		case WM_HOTKEY:
 			// [PrtScr] キーは WM_KEYDOWN を送出しない。ホットキーとして登録してイベントを捕まえる
 			if (wParam == HOTKEY_SNAPSHOT_DESKTOP) { // [PrtScr] キーの WM_KEY_DOWN の代替処理
-				if (m_cb) m_cb->onWindowKeyDown(KKeyboard::KEY_SNAPSHOT);
+				if (m_cb) m_cb->onWindowKeyDown(KKey_SNAPSHOT);
 			}
 			if (wParam == HOTKEY_SNAPSHOT_CLIENT) { // [Alt + PrtScr] キーの WM_KEY_DOWN の代替処理
-				if (m_cb) m_cb->onWindowKeyDown(KKeyboard::KEY_SNAPSHOT);
+				if (m_cb) m_cb->onWindowKeyDown(KKey_SNAPSHOT);
 			}
 			break;
 
 		case WM_KEYDOWN:
 		case WM_SYSKEYDOWN:
 			if (m_cb) {
-				KKeyboard::Key key = KKeyboard::findKeyByVirtualKey(wParam);
-				KKeyboard::Modifiers mods = 0;
+				KKey key = KKeyboard::findKeyByVirtualKey(wParam);
+				KKeyModifiers mods = 0;
 				m_cb->onWindowKeyDown(key);
 			}
 			if (m_kill_alt_f10) {
@@ -576,7 +642,7 @@ public:
 		case WM_KEYUP:
 		case WM_SYSKEYUP:
 			if (m_cb) {
-				KKeyboard::Key key = KKeyboard::findKeyByVirtualKey(wParam);
+				KKey key = KKeyboard::findKeyByVirtualKey(wParam);
 				m_cb->onWindowKeyUp(key);
 			}
 			break;
@@ -606,132 +672,8 @@ public:
 	}
 };
 
-static CWin32Window g_Window;
 
 
-#if USE_WINDOW_THREAD
-class CWindowThread: public KThread {
-public:
-	std::mutex mMutex;
-	int mInitWidth;
-	int mInitHeight;
-	std::string mInitTitleUtf8;
-	int mStat;
-
-	CWindowThread() {
-		mInitWidth = 0;
-		mInitHeight = 0;
-		mStat = 0;
-	}
-	virtual void run() override {
-		mStat = 0;
-		if (g_Window.init(mInitWidth, mInitHeight, mInitTitleUtf8.c_str())) {
-			mStat = 1; // ウィンドウの作成を完了した
-
-			MSG msg;
-			while (GetMessageW(&msg, 0, 0, 0) > 0) {
-				TranslateMessage(&msg);
-				DispatchMessageW(&msg);
-			}
-			mStat = 2; // メッセーループから抜けた
-		} else {
-			mStat = 3; // エラー終了
-		}
-	}
-	void waitForReady() {
-		while (mStat < 1) {
-			Sleep(1);
-		}
-	}
-};
-static CWindowThread g_WindowThread;
-#endif // USE_WINDOW_THREAD
-
-#pragma region KWindow
-static LRESULT CALLBACK _WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	return g_Window.wndProc(hWnd, msg, wParam, lParam);
-}
-bool KWindow::init(int w, int h, const char *text_u8) {
-#if USE_WINDOW_THREAD
-	g_WindowThread.mInitWidth = w;
-	g_WindowThread.mInitHeight = h;
-	g_WindowThread.mInitTitleUtf8 = text_u8;
-	g_WindowThread.start();
-	g_WindowThread.waitForReady(); // ウィンドウの作成が終わり、ウィンドウメッセージを受け付け可能になるまで待つ
-	return g_WindowThread.mStat == 1;
-#else
-	if (g_Window.init(w, h, text_u8)) {
-		return true;
-	}
-#endif
-	return false;
-}
-void KWindow::shutdown() {
-	g_Window.shutdown();
-}
-void KWindow::setCallback(KWindow::Callback *cb) {
-	g_Window.setCallback(cb);
-}
-bool KWindow::isInit() {
-	return g_Window.getHandle() != nullptr;
-}
-void * KWindow::getHandle() {
-	return g_Window.getHandle();
-}
-void KWindow::getClientSize(int *cw, int *ch) {
-	g_Window.getClientSize(cw, ch);
-}
-void KWindow::getWindowPosition(int *x, int *y) {
-	g_Window.getWindowPosition(x, y);
-}
-void KWindow::screenToClient(int *x, int *y) {
-	g_Window.screenToClient(x, y);
-}
-void KWindow::clientToScreen(int *x, int *y) {
-	g_Window.clientToScreen(x, y);
-}
-bool KWindow::isWindowVisible() {
-	return g_Window.isWindowVisible();
-}
-bool KWindow::isWindowFocused() {
-	return g_Window.isWindowFocused();
-}
-bool KWindow::isIconified() {
-	return g_Window.isIconified();
-}
-bool KWindow::isMaximized() {
-	return g_Window.isMaximized();
-}
-void KWindow::maximizeWindow() {
-	g_Window.maximizeWindow();
-}
-void KWindow::restoreWindow() {
-	g_Window.restoreWindow();
-}
-void KWindow::setWindowVisible(bool value) {
-	g_Window.setWindowVisible(value);
-}
-void KWindow::setWindowPosition(int x, int y) {
-	g_Window.setWindowPosition(x, y);
-}
-void KWindow::setClientSize(int cw, int ch) {
-	g_Window.setClientSize(cw, ch);
-}
-void KWindow::setTitle(const char *text_u8) {
-	g_Window.setTitle(text_u8);
-}
-int KWindow::getAttribute(KWindow::Attr attr) {
-	return g_Window.getAttribute(attr);
-}
-void KWindow::setAttribute(KWindow::Attr attr, int value) {
-	g_Window.setAttribute(attr, value);
-}
-void KWindow::command(const char *cmd, void *data) {
-	g_Window.command(cmd, data);
-}
-bool KWindow::getMouseCursorPos(int *cx, int *cy) {
-	return g_Window.getMouseCursorPos(cx, cy);
-}
 bool KWindow::processEvents() {
 	MSG msg;
 	// メッセージが届いていればそれを処理する。
@@ -758,6 +700,86 @@ bool KWindow::processEventsWait() {
 		return false;
 	}
 }
+
+
+
+
+
+static CWin32Window *g_Window = nullptr;
+
+
+#if USE_WINDOW_THREAD
+class CWindowThread: public KThread {
+public:
+	std::mutex mMutex;
+	int mInitWidth;
+	int mInitHeight;
+	std::string mInitTitleUtf8;
+	int mStat;
+
+	CWindowThread() {
+		mInitWidth = 0;
+		mInitHeight = 0;
+		mStat = 0;
+	}
+	virtual void run() override {
+		mStat = 0;
+		g_Window = new CWin32Window();
+		if (g_Window->init(mInitWidth, mInitHeight, mInitTitleUtf8.c_str())) {
+			mStat = 1; // ウィンドウの作成を完了した
+
+			MSG msg;
+			while (GetMessageW(&msg, 0, 0, 0) > 0) {
+				TranslateMessage(&msg);
+				DispatchMessageW(&msg);
+			}
+			mStat = 2; // メッセーループから抜けた
+		} else {
+			mStat = 3; // エラー終了
+		}
+		g_Window->shutdown();
+		K__DROP(g_Window);
+	}
+	void waitForReady() {
+		while (mStat < 1) {
+			Sleep(1);
+		}
+	}
+};
+static CWindowThread g_WindowThread;
+#endif // USE_WINDOW_THREAD
+
+#pragma region KWindow
+static LRESULT CALLBACK _WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	return g_Window->wndProc(hWnd, msg, wParam, lParam);
+}
+bool KWindow::init(int w, int h, const char *text_u8) {
+#if USE_WINDOW_THREAD
+	g_WindowThread.mInitWidth = w;
+	g_WindowThread.mInitHeight = h;
+	g_WindowThread.mInitTitleUtf8 = text_u8;
+	g_WindowThread.start();
+	g_WindowThread.waitForReady(); // ウィンドウの作成が終わり、ウィンドウメッセージを受け付け可能になるまで待つ
+	return g_WindowThread.mStat == 1;
+#else
+	g_Window = new CWin32Window();
+	if (g_Window->init(w, h, text_u8)) {
+		return true;
+	}
+#endif
+	return false;
+}
+void KWindow::shutdown() {
+	if (g_Window) {
+		g_Window->shutdown();
+		K__DROP(g_Window);
+	}
+}
+KCoreWindow * KWindow::get() {
+	K__ASSERT(g_Window);
+	return g_Window;
+}
+
 #pragma endregion // KWindow
 
 

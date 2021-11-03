@@ -126,7 +126,7 @@ static bool _PackPngInDirEx(const std::string &dir, int cellsize, bool exclude_d
 			if (K::pathHasExtension(name, ".png")) {
 				std::string path = K::pathJoin(dir, name);
 				std::string bin;
-				KLog::printText("%s", path.c_str());
+				K__PRINT("%s", path.c_str());
 				KInputStream file;
 				if (file.openFileName(path)) {
 					bin = file.readBin();
@@ -138,7 +138,7 @@ static bool _PackPngInDirEx(const std::string &dir, int cellsize, bool exclude_d
 			}
 			if (K::pathHasExtension(name, ".edg")) {
 				std::string path = K::pathJoin(dir, name);
-				KLog::printText("%s", path.c_str());
+				K__PRINT("%s", path.c_str());
 				KEdgeDocument doc;
 				doc.loadFromFileName(path);
 				for (int p=0; p<doc.getPageCount(); p++) {

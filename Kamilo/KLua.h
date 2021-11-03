@@ -48,6 +48,7 @@ public:
 
 	static const char * gettypename(lua_State *ls, int idx);
 
+	static std::string getglobal_stdstr(lua_State *ls, const char *key);
 	static int getglobal_int(lua_State *ls, const char *key);
 	static float getglobal_float(lua_State *ls, const char *key);
 	static void getglobal_int4(lua_State *ls, const char *key, int *x, int *y, int *z, int *w);

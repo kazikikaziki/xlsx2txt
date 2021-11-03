@@ -50,6 +50,7 @@ public:
 	/// @param size                png_first_24bytes に渡したデータのバイト数（もちろん24バイト以上必要）
 	/// @param[out] w 　           画像の幅
 	/// @param[out] h 　           画像の高さ
+	static bool readsize(KInputStream &file, int *w, int *h);
 	static bool readsize(const void *png_first_24bytes, int size, int *w, int *h);
 
 	/// PNG データから画像を復元して RGBA32 配列を得る

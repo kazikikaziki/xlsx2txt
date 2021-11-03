@@ -1,6 +1,7 @@
 ﻿#include "keng_game.h"
 //
 #include <algorithm>
+#include <map>
 #include <unordered_map>
 #include <queue>
 #include "KAnimation.h"
@@ -13,6 +14,7 @@
 #include "KInternal.h"
 #include "KJoystick.h"
 #include "KKeyboard.h"
+#include "KMouse.h"
 #include "KMainLoopClock.h"
 #include "KRes.h"
 #include "KScreen.h"
@@ -26,6 +28,204 @@
 namespace Kamilo {
 
 
+class CIniFileStab: public KIniFile {
+public:
+	virtual void writeInt(const std::string &key, int x) override {
+		std::string s = K::str_sprintf("%d", x);
+		writeString(key, s);
+	}
+	virtual void writeInt2(const std::string &key, int x, int y) override {
+		std::string s = K::str_sprintf("%d,%d", x, y);
+		writeString(key, s);
+	}
+	virtual void writeInt4(const std::string &key, int x, int y, int z, int w) override {
+		std::string s = K::str_sprintf("%d,%d,%d,%d", x, y, z, w);
+		writeString(key, s);
+	}
+	virtual bool readInt(const std::string &key, int *x) const override {
+		std::string s;
+		readString(key, &s);
+		if (sscanf(s.data(), "%d", x) == 1) {
+			return true;
+		}
+		return false;
+	}
+	virtual bool readInt2(const std::string &key, int *x, int *y) const override {
+		std::string s;
+		readString(key, &s);
+		if (sscanf(s.data(), "%d,%d", x, y) == 2) {
+			return true;
+		}
+		return false;
+	}
+	virtual bool readInt4(const std::string &key, int *x, int *y, int *z, int *w) const override {
+		std::string s;
+		readString(key, &s);
+		if (sscanf(s.data(), "%d,%d,%d,%d", x, y, z, w) == 4) {
+			return true;
+		}
+		return false;
+	}
+};
+
+
+#pragma region CIniFileXml
+#define CIniFileXml_USE_XML_ATTR 1
+
+class CIniFileXml: public CIniFileStab {
+public:
+	KXmlElement *m_Xml;
+	std::string m_FileName;
+
+	CIniFileXml() {
+		m_Xml = nullptr;
+	}
+	CIniFileXml(const std::string &filename) {
+		m_Xml = nullptr;
+		load(filename);
+	}
+	virtual ~CIniFileXml() {
+		K__DROP(m_Xml);
+	}
+	virtual void writeString(const std::string &key, const std::string &val) override {
+		if (m_Xml == nullptr) return;
+		#if CIniFileXml_USE_XML_ATTR
+		{
+			m_Xml->setAttrString(key, val);
+			save();
+			return;
+		}
+		#else
+		{
+			KXmlElement *elm = m_Xml->findNode(key.c_str());
+			if (elm) {
+				elm->grab();
+			} else {
+				elm = m_Xml->addChild(key.c_str());
+			}
+			if (elm) {
+				elm->setText(val.c_str());
+				elm->drop();
+				save();
+				return;
+			}
+			return;
+		}
+		#endif
+	}
+	virtual bool readString(const std::string &key, std::string *p_val) const override {
+		if (m_Xml == nullptr) return false;
+		#if CIniFileXml_USE_XML_ATTR
+		{
+			const char *s = m_Xml->getAttrString(key.c_str());
+			if (s) {
+				if (p_val) *p_val = s;
+				return true;
+			} else {
+				return false;
+			}
+		}
+		#else
+		{
+			KXmlElement *elm = m_Xml->findNode(key.c_str());
+			if (elm) {
+				if (p_val) *p_val = elm->getText("");
+				return true;
+			} else {
+				return false;
+			}
+		}
+		#endif
+	}
+	virtual void save() override {
+		if (m_Xml == nullptr) return;
+
+		KOutputStream output = KOutputStream::fromFileName(m_FileName);
+		if (!output.isOpen()) return;
+
+		m_Xml->write(output, 0);
+	}
+	void load(const std::string &filename) {
+		K__DROP(m_Xml);
+		m_FileName = filename;
+		if (K::pathExists(filename)) {
+			KXmlElement *doc = KXmlElement::createFromFileName(m_FileName);
+			if (doc) {
+				KXmlElement *xUser = doc->findNode("User");
+				if (xUser) {
+					m_Xml = xUser->clone();
+				}
+				doc->drop();
+			}
+		}
+		if (m_Xml == nullptr) {
+			m_Xml = KXmlElement::create("User");
+		}
+	}
+};
+#pragma endregion // CIniFileXml
+
+
+#pragma region CIniFileSimple
+class CIniFileSimple: public CIniFileStab {
+public:
+	std::map<std::string, std::string> m_Values;
+	std::string m_FileName;
+
+	CIniFileSimple() {
+	}
+	CIniFileSimple(const std::string &filename) {
+		load(filename);
+	}
+	virtual ~CIniFileSimple() {
+	}
+	virtual void writeString(const std::string &key, const std::string &val) override {
+		m_Values[key] = val;
+		save();
+	}
+	virtual bool readString(const std::string &key, std::string *p_val) const override {
+		auto it = m_Values.find(key);
+		if (it != m_Values.end()) {
+			if (p_val) *p_val = it->second;
+			return true;
+		}
+		return false;
+	}
+	virtual void save() override {
+		KOutputStream output = KOutputStream::fromFileName(m_FileName);
+		if (!output.isOpen()) return;
+		for (auto it=m_Values.begin(); it!=m_Values.end(); ++it) {
+			std::string s = K::str_sprintf("%s = %s\n", it->first.c_str(), it->second.c_str());
+			output.writeString(s);
+		}
+	}
+	void load(const std::string &filename) {
+		m_Values.clear();
+		m_FileName = filename;
+		KInputStream input = KInputStream::fromFileName(filename);
+		if (input.isOpen()) {
+			std::vector<std::string> lines = K::strSplitLines(input.readBin());
+			for (auto it=lines.begin(); it!=lines.end(); ++it) {
+				std::string k, v;
+				K::strSplitLeft(*it, "=", &k, &v);
+				if (k != "") {
+					m_Values[k] = v;
+				}
+			}
+		}
+	}
+};
+#pragma endregion // CIniFileSimple
+
+
+KIniFile * createIniFile(const std::string &filename) {
+#if 0
+	return new CIniFileXml(filename);
+#else
+	return new CIniFileSimple(filename);
+#endif
+}
+
 
 
 std::string KEngine::passImageName(int index) {
@@ -35,7 +235,7 @@ std::string KEngine::passImageName(int index) {
 
 class CEngineImpl:
 	public KNodeRemovingCallback,
-	public KWindow::Callback {
+	public KWindowCallback {
 public:
 	std::vector<KManager *> m_managers; // バインドされているシステム
 	std::vector<KManager *> m_mgr_call_start;       // on_manager_start を呼ぶ
@@ -54,6 +254,13 @@ private:
 	bool m_init_called;
 	uint32_t m_thread_id;
 public:
+	KCoreWindow *m_Window;
+	KCoreKeyboard *m_Keyboard;
+	KCoreMouse *m_Mouse;
+	KCoreJoystick *m_Joystick;
+	KIniFile *m_IniFile;
+	KStorage *m_Storage;
+
 	CEngineImpl() {
 		zero_clear();
 		m_thread_id = K::sysGetCurrentThreadId();
@@ -65,57 +272,83 @@ public:
 		zero_clear();
 		m_init_called = true;
 
-		// コンソール
-		if (params && params->use_console) {
-			KLog::init();
-			KLog::setOutputConsole(true);
+		KEngineDef def; // この時点で def にはデフォルト値が入っている
+		if (params) {
+			def = *params;
 		}
 
 		m_clock.init();
-		if (params && params->fps > 0) {
-			m_clock.setFps(params->fps);
+		if (def.fps > 0) {
+			m_clock.setFps(def.fps);
 		}
 
-		int w = 0;
-		int h = 0;
-		if (params) {
-			w = params->resolution_x;
-			h = params->resolution_y;
-			K__ASSERT(w > 0);
-			K__ASSERT(h > 0);
+		// Iniファイル
+		if (def.ini_filename != "") {
+			m_IniFile = Kamilo::createIniFile(def.ini_filename);
 		}
+
+		int w = def.resolution_x;
+		int h = def.resolution_y;
+		K__ASSERT(w > 0);
+		K__ASSERT(h > 0);
 
 		// ウィンドウ
 		KWindow::init(w, h, "");
-		KWindow::setCallback(this);
+		m_Window = KWindow::get();
+		m_Window->grab();
+		m_Window->setCallback(this); // KWindowCallback
 
-		if (params) {
-			addManager(params->callback);
+		// Iniファイルにウィンドウ位置とサイズがあるなら復元する
+		if (m_IniFile) {
+			int x=0, y=0, w=0, h=0;
+			m_IniFile->readInt2("Pos", &x, &y);
+			m_IniFile->readInt2("Size", &w, &h);
+			if (m_Window->adjustWindowPosAndSize(&x, &y, &w, &h)) {
+				m_Window->setWindowNormalRect(x, y, w, h);
+			}
+
+			int maximized = 0;
+			m_IniFile->readInt("Maximized", &maximized);
+			if (maximized) {
+				m_Window->maximizeWindow();
+			}
 		}
 
 		// 入力デバイス
-		KJoystick::init();
+		m_Keyboard = Kamilo::createKeyboardWin32();
+		m_Mouse = Kamilo::createMouseWin32();
+		m_Joystick = Kamilo::createJoystickWin32();
+
+		if (def.storage) {
+			m_Storage = def.storage;
+			K__GRAB(m_Storage);
+		} else {
+			m_Storage = Kamilo::createStorage();
+		}
+		if (def.callback) {
+			addManager(def.callback);
+		}
 
 		// スクリーン
 		int cw = 0;
 		int ch = 0;
-		KWindow::getClientSize(&cw, &ch);
+		m_Window->getClientSize(&cw, &ch);
 		KScreen::install(w, h, cw, ch);
-		KVideo::init(KWindow::getHandle(), nullptr, nullptr);
-		KSoundPlayer::init(KWindow::getHandle());
+		KVideo::init(m_Window->getHandle(), nullptr, nullptr);
+		KSoundPlayer::init(m_Window->getHandle());
 		KNodeTree::install();
 
 		// GUI
 		void *d3ddev9 = nullptr; // IDirect3DDevice9
 		KVideo::getParameter(KVideo::PARAM_D3DDEV9, &d3ddev9);
-		KImGui::InitWithDX9(KWindow::getHandle(), d3ddev9);
+		KImGui::InitWithDX9(m_Window->getHandle(), d3ddev9);
 
 		// Guiスタイルの設定
 		ImGui::StyleColorsDark();
 		KImGui::StyleKK();
 
 		// インスペクター
-		if (params && params->use_inspector) {
+		if (def.use_inspector) {
 			KInspector::install();
 		}
 
@@ -156,7 +389,14 @@ public:
 		KScreen::uninstall();
 		KJoystick::shutdown();
 		KSoundPlayer::shutdown();
-		KWindow::shutdown();
+
+		K__DROP(m_Keyboard);
+		K__DROP(m_Mouse);
+		K__DROP(m_Joystick);
+		K__DROP(m_IniFile);
+		K__DROP(m_Storage);
+		K__DROP(m_Window);
+
 		m_clock.shutdown();
 
 		// メンバーをゼロで初期化
@@ -172,6 +412,11 @@ public:
 		m_init_called = false;
 		m_should_exit = false;
 		m_flags = KEngine::FLAG_PAUSE | KEngine::FLAG_MENU;
+		m_Keyboard = nullptr;
+		m_Mouse = nullptr;
+		m_Joystick = nullptr;
+		m_IniFile = nullptr;
+		m_Storage = nullptr;
 	}
 	/// フルスクリーンモードへの切り替え要求が出ているなら切り替えを実行する。
 	/// 切り替えを実行した場合は true を返す。
@@ -207,8 +452,8 @@ public:
 		if (!reset_ok) {
 			// 失敗
 			// ウィンドウモード用のウィンドウスタイルに戻す
-			KWindow::setClientSize(w, h);
-			KLog::printInfo("Failed to switch to fullscreen mode.");
+			m_Window->setClientSize(w, h);
+			K__PRINT("Failed to switch to fullscreen mode.");
 			return false;
 		}
 		
@@ -217,7 +462,7 @@ public:
 
 		// フルスクリーン化完了
 		m_fullscreen = true;
-		KLog::printInfo("Switching to fullscreen -- OK");
+		K__PRINT("Switching to fullscreen -- OK");
 
 		// イベント送信
 		{
@@ -249,17 +494,17 @@ public:
 		
 		if (!reset_ok) {
 			// 失敗
-			KLog::printWarning("Failed to switch to window mode.");
+			K__WARNING("Failed to switch to window mode.");
 			return false;
 		}
 
 		// ウィンドウのフルスクリーンスタイルを解除する。
 		// デバイスのフルスクリーン解除の後で実行しないと、ウィンドウスタイルがおかしくなる
-		KWindow::setClientSize(w, h);
+		m_Window->setClientSize(w, h);
 
 		// ウィンドウモード化完了
 		m_fullscreen = false;
-		KLog::printInfo("Switching to windowed -- OK");
+		K__PRINT("Switching to windowed -- OK");
 
 		// イベント送信
 		{
@@ -285,10 +530,10 @@ public:
 
 		if (cw <= 0 || ch <= 0) {
 			// 現在のウィンドウサイズを使う
-			KWindow::getClientSize(&cw, &ch);
-			KLog::printInfo("resize by current window size %d x %d", cw, ch);
+			m_Window->getClientSize(&cw, &ch);
+			K__PRINT("resize by current window size %d x %d", cw, ch);
 		} else {
-			KLog::printInfo("resize by signal %d x %d", cw, ch);
+			K__PRINT("resize by signal %d x %d", cw, ch);
 		}
 
 		// リセット
@@ -333,12 +578,11 @@ public:
 	void moveWindow(int w, int h) {
 		// ウィンドウモードでのみ移動可能
 		if (m_fullscreen) return;
-		if (!KWindow::isInit()) return;
-		if (KWindow::getAttribute(KWindow::ATTR_FULLFILL)) return;
-		if (KWindow::isMaximized()) return;
-		if (KWindow::isIconified()) return;
-		if (!KWindow::isWindowFocused()) return;
-		KWindow::setWindowPosition(w, h);
+		if (m_Window->getAttribute(KWindowAttr_FULLFILL)) return;
+		if (m_Window->isMaximized()) return;
+		if (m_Window->isIconified()) return;
+		if (!m_Window->isWindowFocused()) return;
+		m_Window->setWindowPosition(w, h);
 	}
 	void resizeWindow(int w, int h) {
 		if (m_fullscreen) {
@@ -346,10 +590,10 @@ public:
 			m_mark_towindowed = true;
 		}
 		process_query(); // 今すぐに切り替える
-		KWindow::setAttribute(KWindow::ATTR_HAS_BORDER, 1);
-		KWindow::setAttribute(KWindow::ATTR_HAS_TITLE, 1);
-		KWindow::setAttribute(KWindow::ATTR_FULLFILL, 0);
-		KWindow::setClientSize(w, h);
+		m_Window->setAttribute(KWindowAttr_HAS_BORDER, 1);
+		m_Window->setAttribute(KWindowAttr_HAS_TITLE, 1);
+		m_Window->setAttribute(KWindowAttr_FULLFILL, 0);
+		m_Window->setClientSize(w, h);
 	}
 	void maximizeWindow() {
 		// 通常の最大化
@@ -357,10 +601,10 @@ public:
 			m_mark_tofullscreen = false;
 			m_mark_towindowed = true;
 		}
-		KWindow::setAttribute(KWindow::ATTR_HAS_BORDER, 1);
-		KWindow::setAttribute(KWindow::ATTR_HAS_TITLE, 1);
-		KWindow::setAttribute(KWindow::ATTR_FULLFILL, 0);
-		KWindow::maximizeWindow();
+		m_Window->setAttribute(KWindowAttr_HAS_BORDER, 1);
+		m_Window->setAttribute(KWindowAttr_HAS_TITLE, 1);
+		m_Window->setAttribute(KWindowAttr_FULLFILL, 0);
+		m_Window->maximizeWindow();
 	}
 	void restoreWindow() {
 		if (m_fullscreen) {
@@ -368,12 +612,12 @@ public:
 			m_mark_towindowed = true;
 		}
 		// ウィンドウモードに切り替える
-		KWindow::restoreWindow();
+		m_Window->restoreWindow();
 		
 		// ウィンドウモード向けのウィンドウスタイルにする
-		KWindow::setAttribute(KWindow::ATTR_HAS_BORDER, 1);
-		KWindow::setAttribute(KWindow::ATTR_HAS_TITLE, 1);
-		KWindow::setAttribute(KWindow::ATTR_FULLFILL, 0);
+		m_Window->setAttribute(KWindowAttr_HAS_BORDER, 1);
+		m_Window->setAttribute(KWindowAttr_HAS_TITLE, 1);
+		m_Window->setAttribute(KWindowAttr_FULLFILL, 0);
 	}
 	void setFullscreen() {
 		if (! m_fullscreen) {
@@ -387,10 +631,10 @@ public:
 			m_mark_towindowed = true;
 		}
 		process_query(); // 今すぐに切り替える
-		KWindow::setAttribute(KWindow::ATTR_HAS_BORDER, 0);
-		KWindow::setAttribute(KWindow::ATTR_HAS_TITLE, 0);
-		KWindow::setAttribute(KWindow::ATTR_FULLFILL, 1);
-		KWindow::maximizeWindow();
+		m_Window->setAttribute(KWindowAttr_HAS_BORDER, 0);
+		m_Window->setAttribute(KWindowAttr_HAS_TITLE, 0);
+		m_Window->setAttribute(KWindowAttr_FULLFILL, 1);
+		m_Window->maximizeWindow();
 	}
 
 	/// デバッグ用
@@ -439,29 +683,29 @@ public:
 			return isKeyboardBlocked() ? 1 : 0;
 
 		case KEngine::ST_WINDOW_FOCUSED:
-			return KWindow::isWindowFocused() ? 1 : 0;
+			return m_Window->isWindowFocused() ? 1 : 0;
 
 		case KEngine::ST_WINDOW_POSITION_X:
-			KWindow::getWindowPosition(&val, nullptr);
+			m_Window->getWindowPosition(&val, nullptr);
 			return val;
 
 		case KEngine::ST_WINDOW_POSITION_Y:
-			KWindow::getWindowPosition(nullptr, &val);
+			m_Window->getWindowPosition(nullptr, &val);
 			return val;
 
 		case KEngine::ST_WINDOW_CLIENT_SIZE_W:
-			KWindow::getClientSize(&val, nullptr);
+			m_Window->getClientSize(&val, nullptr);
 			return val;
 
 		case KEngine::ST_WINDOW_CLIENT_SIZE_H:
-			KWindow::getClientSize(nullptr, &val);
+			m_Window->getClientSize(nullptr, &val);
 			return val;
 
 		case KEngine::ST_WINDOW_IS_MAXIMIZED:
-			return KWindow::isMaximized() ? 1 : 0;
+			return m_Window->isMaximized() ? 1 : 0;
 
 		case KEngine::ST_WINDOW_IS_ICONIFIED:
-			return KWindow::isIconified() ? 1 : 0;
+			return m_Window->isIconified() ? 1 : 0;
 
 		case KEngine::ST_VIDEO_IS_FULLSCREEN:
 			// スクリーンが fullscreen ならば本物のフルスクリーンになっている
@@ -471,7 +715,7 @@ public:
 			// ウィンドウモード（ボーダレスフルスクリーンは、ウィンドウモードでウィンドウを最大化しているだけなので）
 			// かつ境界線が無ければ、ボーダレスフルスクリーン
 			if (!m_fullscreen) {
-				if (!KWindow::getAttribute(KWindow::ATTR_HAS_BORDER)) {
+				if (!m_Window->getAttribute(KWindowAttr_HAS_BORDER)) {
 					return true;
 				}
 			}
@@ -480,7 +724,7 @@ public:
 		case KEngine::ST_VIDEO_IS_WINDOWED:
 			// ウィンドウモードかつボーダレスでなければ、通常ウィンドウモード
 			if (!m_fullscreen) {
-				if (KWindow::getAttribute(KWindow::ATTR_HAS_BORDER)) {
+				if (m_Window->getAttribute(KWindowAttr_HAS_BORDER)) {
 					return true;
 				}
 			}
@@ -510,7 +754,7 @@ public:
 			(*it)->on_manager_will_start();
 		}
 
-		while (!m_should_exit && KWindow::isWindowVisible() && KWindow::processEvents()) {
+		while (!m_should_exit && m_Window->isWindowVisible() && KWindow::processEvents()) {
 			if (should_update_now()) {
 				frame_start();
 				{
@@ -574,7 +818,7 @@ public:
 		}
 
 		// 最小化されているときは描画しない
-		if (KWindow::isIconified()) {
+		if (m_Window->isIconified()) {
 			return false;
 		}
 		// デバイスロストの確認
@@ -591,7 +835,7 @@ public:
 
 		if (1) {
 			// 自分が最前面にあるにも関わらずデバイスロストが 15 秒間続いた場合は強制終了する
-			if (KWindow::isWindowFocused()) {
+			if (m_Window->isWindowFocused()) {
 				if (m_abort_timer == -1) {
 					int fps = m_clock.getFps(nullptr, nullptr);
 					m_abort_timer = 15 * 1000 / fps; // 15秒のフレーム数
@@ -599,9 +843,9 @@ public:
 					m_abort_timer--;
 				} else if (m_abort_timer == 0) {
 					// タイトルバーと境界線を付けて、ユーザーがウィンドウを移動したりリサイズできるようにしておく
-					KWindow::setAttribute(KWindow::ATTR_HAS_BORDER, true);
-					KWindow::setAttribute(KWindow::ATTR_HAS_TITLE, true);
-					KWindow::setAttribute(KWindow::ATTR_RESIZABLE, true);
+					m_Window->setAttribute(KWindowAttr_HAS_BORDER, true);
+					m_Window->setAttribute(KWindowAttr_HAS_TITLE, true);
+					m_Window->setAttribute(KWindowAttr_RESIZABLE, true);
 					K::dialog(u8"デバイスロストから回復できませんでした。ゲームエンジンを終了します");
 					quit();
 				}
@@ -612,7 +856,7 @@ public:
 
 	bool isKeyboardBlocked() {
 		// ウィンドウがフォーカスを持っていない場合、キーボード入力はブロックされる
-		if (!KWindow::isWindowFocused()) {
+		if (!m_Window->isWindowFocused()) {
 			return true;
 		}
 		// ImGui に入力受付状態になっているアイテムがある（テキストボックスなど）なら
@@ -628,8 +872,8 @@ public:
 		// ウィンドウの状態を確認し、キーボードからの入力をゲーム側に反映してよいか判定する
 		
 		// 入力状態
-		for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
-			KJoystick::poll(i);
+		if (m_Joystick) {
+			m_Joystick->poll();
 		}
 		update_camera_render_target();
 
@@ -733,7 +977,7 @@ public:
 	}
 	void frame_render() {
 		// ウィンドウが最小化されているなら描画処理しない
-		if (KWindow::isIconified()) {
+		if (m_Window->isIconified()) {
 			m_sleep_until = m_clock.getTimeMsec() + 500; // しばらく一時停止
 			return;
 		}
@@ -891,22 +1135,31 @@ public:
 	}
 	#pragma endregion // KEngine overrides
 
-	#pragma region KWindow::Callback
-	void onWindowClosing() {
+	#pragma region KWindowCallback
+	virtual void onWindowClosing() override {
 		KSig sig(K_SIG_WINDOW_WINDOW_CLOSING);
 		broadcastSignal(sig);
+
+		// ウィンドウ位置とサイズを保存しておく
+		if (m_IniFile) {
+			int x=0, y=0, w=0, h=0;
+			m_Window->getWindowNormalRect(&x, &y, &w, &h);
+			m_IniFile->writeInt2("Pos", x, y);
+			m_IniFile->writeInt2("Size", w, h);
+			m_IniFile->writeInt("Maximized", m_Window->isMaximized());
+		}
 	}
-	void onWindowDropFile(int index, int total, const char *filename_u8) {
+	virtual void onWindowDropFile(int index, int total, const char *filename_u8) override {
 		KSig sig(K_SIG_WINDOW_DROPFILE);
 		sig.setString("file_u8", filename_u8);
 		sig.setInt("index", index);
 		sig.setInt("total", total);
 		broadcastSignal(sig);
 	}
-	void onWindowMove(int x, int y) {
+	virtual void onWindowMove(int x, int y) override {
 	}
-	void onWindowResize(int x, int y) {
-		KLog::printInfo("onWindowResize %d %d", x, y);
+	virtual void onWindowResize(int x, int y) override {
+		K__VERBOSE("onWindowResize %d %d", x, y);
 		KSig sig(K_SIG_WINDOW_WINDOW_SIZE);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
@@ -915,17 +1168,17 @@ public:
 		m_resize_req = sig;
 		m_signal_mutex.unlock();
 	}
-	void onWindowMouseEnter(int x, int y) {
+	virtual void onWindowMouseEnter(int x, int y) override {
 		KSig sig(K_SIG_WINDOW_MOUSE_ENTER);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
 		broadcastSignal(sig);
 	}
-	void onWindowMouseExit() {
+	virtual void onWindowMouseExit() override {
 		KSig sig(K_SIG_WINDOW_MOUSE_EXIT);
 		broadcastSignal(sig);
 	}
-	void onWindowMouseMove(int x, int y, int btn) {
+	virtual void onWindowMouseMove(int x, int y, int btn) override {
 		KSig sig(K_SIG_WINDOW_MOUSE_MOVE);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
@@ -933,28 +1186,28 @@ public:
 		broadcastSignalAsync(sig);
 	//	broadcastSignal(sig);
 	}
-	void onWindowMouseWheel(int x, int y, int delta) {
+	virtual void onWindowMouseWheel(int x, int y, int delta) override {
 		KSig sig(K_SIG_WINDOW_MOUSE_WHEEL);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
 		sig.setInt("delta", delta);
 		broadcastSignal(sig);
 	}
-	void onWindowMouseButtonDown(int x, int y, int btn) {
+	virtual void onWindowMouseButtonDown(int x, int y, int btn) override {
 		KSig sig(K_SIG_WINDOW_MOUSE_DOWN);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
 		sig.setInt("button", btn);
 		broadcastSignal(sig);
 	}
-	void onWindowMouseButtonUp(int x, int y, int btn) {
+	virtual void onWindowMouseButtonUp(int x, int y, int btn) override {
 		KSig sig(K_SIG_WINDOW_MOUSE_UP);
 		sig.setInt("x", x);
 		sig.setInt("y", y);
 		sig.setInt("button", btn);
 		broadcastSignal(sig);
 	}
-	void onWindowKeyDown(KKeyboard::Key key) {
+	virtual void onWindowKeyDown(KKey key) override {
 		// ImGui に入力受付状態になっているアイテムがある（テキストボックスなど）なら
 		// ゲーム側への入力とはみなさない。無視する
 		if (ImGui::GetCurrentContext()) {
@@ -966,20 +1219,20 @@ public:
 		}
 		// ゲームエンジンの操作
 		switch (key) {
-		case KKeyboard::KEY_F1:
+		case KKey_F1:
 			if ((m_flags & KEngine::FLAG_PAUSE) && KKeyboard::matchModifiers(0)) {
 				playStep();
 			}
 			break;
 
-		case KKeyboard::KEY_F2:
+		case KKey_F2:
 			if ((m_flags & KEngine::FLAG_PAUSE) && KKeyboard::matchModifiers(0)) {
 				play();
 			}
 			break;
 
-		case KKeyboard::KEY_ESCAPE:
-			if ((m_flags & KEngine::FLAG_MENU) && KKeyboard::matchModifiers(KKeyboard::MODIF_SHIFT)) {
+		case KKey_ESCAPE:
+			if ((m_flags & KEngine::FLAG_MENU) && KKeyboard::matchModifiers(KKeyModifier_SHIFT)) {
 				if (KInspector::isInstalled()) {
 					KInspector::setVisible(!KInspector::isVisible());
 				}
@@ -987,7 +1240,7 @@ public:
 			break;
 		}
 	}
-	virtual void onWindowKeyUp(KKeyboard::Key key) override {
+	virtual void onWindowKeyUp(KKey key) override {
 		// ImGui に入力受付状態になっているアイテムがある（テキストボックスなど）なら
 		// ゲーム側への入力とはみなさない。無視する
 		if (ImGui::GetCurrentContext() && !ImGui::IsAnyItemActive()) {
@@ -1018,7 +1271,7 @@ public:
 			}
 		}
 	}
-	#pragma endregion // KWindow::Callback
+	#pragma endregion // KWindowCallback
 
 }; // CEngineImpl
 
@@ -1210,5 +1463,31 @@ KEngine::Flags KEngine::getFlags() {
 	K__ASSERT_RETURN_ZERO(g_EngineInstance);
 	return g_EngineInstance->getFlags();
 }
+
+KCoreWindow * KEngine::getWindow() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_Window;
+}
+KCoreKeyboard * KEngine::getKeyboard() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_Keyboard;
+}
+KCoreMouse * KEngine::getMouse() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_Mouse;
+}
+KCoreJoystick * KEngine::getJoystick() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_Joystick;
+}
+KIniFile * KEngine::getIniFile() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_IniFile;
+}
+KStorage * KEngine::getStorage() {
+	K__ASSERT_RETURN_ZERO(g_EngineInstance);
+	return g_EngineInstance->m_Storage;
+}
+
 
 } // namespace 
