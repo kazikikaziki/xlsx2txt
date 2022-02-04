@@ -4,7 +4,7 @@ using namespace Kamilo;
 
 
 /// XLSX 内のテキストを抜き出す
-bool ExportTextFromXLSX(const std::string &inpath, const std::string &outpath) {
+static bool _ExportTextFromXLSX(const std::string &inpath, const std::string &outpath) {
 	KInputStream input = KInputStream::fromFileName(inpath);
 	if (!input.isOpen()) {
 		KLogger::get()->emitf(KLogLv_ERROR, "Failed to open: %s", inpath.c_str());
@@ -51,13 +51,13 @@ void GameMain(const char *args_ansi) {
 			if (K::pathHasExtension(in, ".xlsx")) {
 				KLogger::get()->emitf(KLogLv_NONE, "[%d] %s\n", i, tok[i].c_str());
 				std::string out = in + ".xlsx2txt";
-				ExportTextFromXLSX(in, out);
+				_ExportTextFromXLSX(in, out);
 			}
 		}
 	}
 
-//	printf("[Hit enter key]\n");
-//	getchar();
+	printf("[Hit enter key]\n");
+	getchar();
 
 	KLogger::shutdown();
 	K::win32_FreeConsole();
