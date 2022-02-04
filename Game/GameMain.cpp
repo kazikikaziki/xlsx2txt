@@ -31,26 +31,12 @@ bool ExportTextFromXLSX(const std::string &inpath, const std::string &outpath) {
 }
 
 
-static std::string _Unquote(const std::string &s) {
-	const char QUOTE = '"';
-	std::string t = s;
-	// 前後の " を削除する
-	if (t.size() >= 2 && t.front()==QUOTE && t.back()==QUOTE) {
-		t.erase(t.begin());
-		t.pop_back();
-	}
-	// 連続する "" を１つの " に変換する
-	K::strReplace(t, "\"\"", "\"");
-
-	return t;
-}
-
 void GameMain(const char *args_ansi) {
 	std::string args_u8 = K::strAnsiToUtf8(args_ansi, "");
-
 	K::sysSetCurrentDir(K::sysGetCurrentExecDir()); // exe の場所をカレントディレクトリにする
 	K::win32_AllocConsole();
-	KLogger::open(KLogEmitFlag_INIT_MUTE);
+
+	KLogger::init();
 	KLogger::get()->getEmitter()->setConsoleOutput(true);
 	KLogger::get()->emitf(KLogLv_NONE, "***");
 	KLogger::get()->emitf(KLogLv_NONE, "*** XLSX2TXT (%s) ***", __DATE__);
@@ -58,17 +44,21 @@ void GameMain(const char *args_ansi) {
 	KLogger::get()->emitf(KLogLv_NONE, "");
 	KLogger::get()->emitf(KLogLv_NONE, "ARGS=%s\n", args_u8.c_str());
 
-	auto tok = K::strSplit(args_u8, " ");
-	for (int i=0; i<tok.size(); i++) {
-		const std::string &in = _Unquote(tok[i]);
-		if (K::pathHasExtension(in, ".xlsx")) {
-			KLogger::get()->emitf(KLogLv_NONE, "[%d] %s\n", i, tok[i].c_str());
-			std::string out = in + ".xlsx2txt";
-			ExportTextFromXLSX(in, out);
+	{
+		auto tok = K::strSplitQuotedText(args_u8);
+		for (int i=0; i<tok.size(); i++) {
+			const std::string &in = tok[i];
+			if (K::pathHasExtension(in, ".xlsx")) {
+				KLogger::get()->emitf(KLogLv_NONE, "[%d] %s\n", i, tok[i].c_str());
+				std::string out = in + ".xlsx2txt";
+				ExportTextFromXLSX(in, out);
+			}
 		}
 	}
 
 //	printf("[Hit enter key]\n");
 //	getchar();
+
+	KLogger::shutdown();
 	K::win32_FreeConsole();
 }

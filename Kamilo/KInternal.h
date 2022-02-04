@@ -277,6 +277,8 @@ public:
 	static std::vector<std::string> strSplit(const std::string &s, const std::string &delims, int maxcount=0, bool condense_delims=true, bool _trim=true);
 	static std::vector<std::string> strSplitByWord(const std::string &str, const std::string &sep_word);
 	static std::vector<std::string> strSplitLines(const std::string &s, bool skip_empty_lines=true, bool _trim=true);
+	static std::vector<std::string> K::strSplitQuotedText(const std::string &text);
+
 	static bool strToFloat(const char *s, float *p_val);
 	static bool strToFloat(const std::string &s, float *p_val);
 	static float strToFloat(const std::string &s, float def=0.0f);
