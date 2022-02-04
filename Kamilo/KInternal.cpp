@@ -1830,6 +1830,19 @@ std::vector<std::string> K::strSplitLines(const std::string &str, bool skip_empt
 	return result;
 }
 
+static bool _IsSeparator(int c) {
+	if (0x00 <= c && c < 0x80) {
+		if (isspace(c)) {
+			return true;
+		}
+		if (c == ',') {
+			return true;
+		}
+	}
+	return false;
+}
+
+
 // 引用符でまとめられたテキストを分解する（もちろん引用符無しのテキストでも良い）
 // "aaa bbb", "ccc" だった場合、"aaa bbb" は1つの塊であるので aaa と bbb に分解してはいけない。
 // そういうところを考慮して分解する
@@ -1841,47 +1854,69 @@ std::vector<std::string> K::strSplitQuotedText(const std::string &text) {
 	int len = text.size();
 	char quote = '\0';
 	const char *s = text.c_str();
-	std::string t;
+	std::string tmp;
 	for (int i=0; i<len; i++) {
 		switch (mode) {
 		case 0:
 			// 開始引用符を探している
 			if (s[i] == '"') {
-				t.clear();
+				tmp.clear();
 				quote = '"'; // 二重引用符で始まっている。終端も二重引用符でないといけない
 				mode = 1;
 				break;
 			}
 			if (s[i] == '\'') {
-				t.clear();
+				tmp.clear();
 				quote = '\''; // 単引用符で始まっている。終端も単引用符でないといけない
+				mode = 1;
+				break;
+			}
+			if (!_IsSeparator(s[i])) {
+				// 区切り文字でない文字が見つかった。
+				// 引用符無しの文字列が始まっているとする
+				tmp.clear();
+				tmp.push_back(s[i]);
+				quote = '\0';
 				mode = 1;
 				break;
 			}
 			break;
 		case 1:
 			// 終端引用符を探している。ただし連続する引用符は1つの引用符とする
-			if (s[i] == quote) {
-				if (s[i+1] == quote) { // 次の文字も同じ引用符だったら無視する。文字列終端の場合は \0 があるのでインデックス範囲外にはならない。※sは const char * でないといけない
-					t.push_back(s[i]);
-					i++; // 1文字読み飛ばす
+			if (quote) {
+				// 引用符ありテキスト。終端の引用符までをカタマリとする
+				if (s[i] == quote) {
+					if (s[i+1] == quote) { // 次の文字も同じ引用符だったら無視する。文字列終端の場合は \0 があるのでインデックス範囲外にはならない。※sは const char * でないといけない
+						tmp.push_back(s[i]);
+						i++; // 1文字読み飛ばす
+					} else {
+						// 引用符一つだけ。ここで終了
+						result.push_back(tmp);
+						tmp.clear();
+						mode = 0;
+						break;
+					}
 				} else {
-					// 引用符一つだけ。ここで終了
-					result.push_back(t);
-					t.clear();
+					tmp.push_back(s[i]);
+				}
+			} else {
+				// 引用符なしのテキスト。空白またはカンマまでをカタマリとする
+				if (_IsSeparator(s[i])) {
+					// 区切り文字が見つかった。ここで要素終了
+					result.push_back(tmp);
+					tmp.clear();
 					mode = 0;
 					break;
+				} else {
+					tmp.push_back(s[i]);
 				}
-
-			} else {
-				t.push_back(s[i]);
 			}
 			break;
 		}
 	}
-	if (t != "") {
+	if (tmp != "") {
 		// 一番最後に終端引用符が無いまま終わった。最後に読み取った文字列を追加しておく
-		result.push_back(t);
+		result.push_back(tmp);
 	}
 	return result;
 }
