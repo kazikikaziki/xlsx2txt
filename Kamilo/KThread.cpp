@@ -18,6 +18,7 @@ KThread::~KThread() {
 	stop();
 }
 void KThread::start() {
+	m_exit = false;
 	m_thread = (HANDLE)_beginthreadex(nullptr, 0, _ThreadCallback, this, 0, nullptr);
 }
 void KThread::stop() {

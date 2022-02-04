@@ -50,6 +50,14 @@
 #define K__Assert(expr)  K__ASSERT(expr)
 #define K__Verify(expr)  K__VERIFY(expr)
 
+//  可変引数での文字列取得をまとめたもの。以下のように使う
+//  void print(const char *fmt, ...) {
+//	char s[1024];
+//	K_vsprintf_va_args(s, sizeof(s), fmt);
+//	puts(s);
+//}
+#define K__vsprintf__va_args(BUF, SIZE, FMT) { va_list args; va_start(args, FMT); vsnprintf(BUF, SIZE, FMT, args); va_end(args); }
+
 
 namespace Kamilo {
 

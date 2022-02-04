@@ -1,12 +1,10 @@
 ﻿#pragma once
-#include "KRef.h"
-#include "KLog.h"
-#include "KStream.h"
-#include "KXml.h"
-#include "KMath.h"
+#include <string>
+#include <vector>
 
 namespace Kamilo {
 
+class KXmlElement; // "KXml.h"
 class CNamedValuesImpl; // internal
 
 /// 「名前＝値」の形式のデータを順序無しで扱う

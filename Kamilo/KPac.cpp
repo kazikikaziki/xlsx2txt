@@ -1,6 +1,7 @@
 ﻿#include "KPac.h"
 //
 #include <mutex>
+#include <unordered_map>
 #include "KInternal.h"
 #include "KStream.h"
 #include "KZlib.h"
@@ -112,6 +113,7 @@ bool KPacFileWriter::addEntryFromMemory(const std::string &entry_name, const voi
 
 #pragma region KPacFileReader
 class CPacReaderImpl {
+	std::unordered_map<std::string, int> m_Names;
 	std::mutex m_Mutex;
 	KInputStream m_Input;
 public:
@@ -242,10 +244,23 @@ public:
 		return num;
 	}
 	int getIndexByName_unsafe(const std::string &entry_name, bool ignore_case, bool ignore_path) {
+
+		if (!ignore_case && !ignore_path) {
+			// find from cache
+			auto it = m_Names.find(entry_name);
+			if (it != m_Names.end()) {
+				return it->second;
+			}
+		}
+
 		seekFirst_unsafe();
 		int idx = 0;
 		std::string name;
 		while (readFile_unsafe(&name, nullptr)) {
+			if (!ignore_case && !ignore_path) {
+				// add to cache
+				m_Names[name] = idx;
+			}
 			if (K::pathCompare(name, entry_name, ignore_case, ignore_path) == 0) {
 				return idx;
 			}
@@ -262,6 +277,10 @@ public:
 			}
 #endif
 			idx++;
+		}
+		if (!ignore_case && !ignore_path) {
+			// add to cache
+			m_Names[entry_name] = -1;
 		}
 		return -1;
 	}

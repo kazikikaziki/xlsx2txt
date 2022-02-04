@@ -47,18 +47,20 @@ void KDirectoryWalker::scanW(const std::wstring &wtop, const std::wstring &wdir,
 	std::vector<Item> list;
 	scanFilesW(wtop, wdir, list);
 	for (auto it=list.begin(); it!=list.end(); ++it) {
+		std::string parentdir = it->parentu;
+		K::strReplaceChar(parentdir, L'\\', L'/');
 		if (it->isdir) {
 			bool enter = false;
-			cb->onDir(it->nameu, it->parentu, &enter);
+			cb->onDir(it->nameu, parentdir, &enter);
 			if (enter) {
 				wchar_t wsub[MAX_PATH] = {0};
 				wcscpy_s(wsub, MAX_PATH, wdir.c_str());
 				PathAppendW(wsub, it->namew.c_str());
 				scanW(wtop, wsub, cb);
-				cb->onDirExit(it->nameu, it->parentu);
+				cb->onDirExit(it->nameu, parentdir);
 			}
 		} else {
-			cb->onFile(it->nameu, it->parentu);
+			cb->onFile(it->nameu, parentdir);
 		}
 	}
 }

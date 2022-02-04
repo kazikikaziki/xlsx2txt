@@ -23,6 +23,7 @@
 #include "KStorage.h"
 #include "KSystem.h"
 #include "KSig.h"
+#include "KXml.h"
 #include "KWindow.h"
 
 namespace Kamilo {

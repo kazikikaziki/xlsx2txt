@@ -78,11 +78,7 @@ bool K::_IsDebuggerPresent() {
 
 void K::printf_u8(const char *fmt_u8, ...) {
 	char u[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u, sizeof(u), fmt_u8, args);
-	va_end(args);
-
+	K__vsprintf__va_args(u, sizeof(u), fmt_u8);
 	std::string s = K::strUtf8ToAnsi(u, "");
 	printf("%s", s.c_str());
 }
@@ -183,10 +179,7 @@ void K::outputDebugStringW(const std::wstring &ws) {
 }
 void K::outputDebugStringFmt(const char *fmt_u8, ...) {
 	char s[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(s, sizeof(s), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(s, sizeof(s), fmt_u8);
 	outputDebugStringU(s);
 }
 #pragma endregion // output debug string
@@ -245,10 +238,7 @@ void K::setErrorHook(void (*hook)(const char *u8)) {
 
 void K::error2(const char *file_u8, int line, const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
 
 	std::string file = K::pathGetLast(file_u8);
 	file = K::pathRenameExtension(file, "");
@@ -256,10 +246,7 @@ void K::error2(const char *file_u8, int line, const char *fmt_u8, ...) {
 }
 void K::warning2(const char *file_u8, int line, const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
 
 	std::string file = K::pathGetLast(file_u8);
 	file = K::pathRenameExtension(file, "");
@@ -267,10 +254,7 @@ void K::warning2(const char *file_u8, int line, const char *fmt_u8, ...) {
 }
 void K::verbose2(const char *file_u8, int line, const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
 
 	std::string file = K::pathGetLast(file_u8);
 	file = K::pathRenameExtension(file, "");
@@ -278,10 +262,7 @@ void K::verbose2(const char *file_u8, int line, const char *fmt_u8, ...) {
 }
 void K::print2(const char *file_u8, int line, const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
 
 	std::string file = K::pathGetLast(file_u8);
 	file = K::pathRenameExtension(file, "");
@@ -291,12 +272,9 @@ void K::print2(const char *file_u8, int line, const char *fmt_u8, ...) {
 
 void K::print(const char *fmt_u8, ...) {
 	static int s_RecursiveGuard = 0; // 再帰呼び出し防止
-
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
+
 	if (g_PrintHook && s_RecursiveGuard==0) {
 		s_RecursiveGuard++;
 		g_PrintHook(u8);
@@ -326,10 +304,8 @@ void K::printW(const wchar_t *wfmt, ...) {
 void K::verbose(const char *fmt_u8, ...) {
 #ifndef KAMILO_NOVERBOSE
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
+
 	if (g_DebugPrintHook) {
 		g_DebugPrintHook(u8);
 	} else {
@@ -355,10 +331,8 @@ void K::verboseW(const wchar_t *wfmt, ...) {
 }
 void K::debug(const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
+
 	if (g_DebugPrintHook) {
 		g_DebugPrintHook(u8);
 	} else {
@@ -381,10 +355,8 @@ void K::debugW(const wchar_t *wfmt, ...) {
 }
 void K::warning(const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
+
 	if (g_WarningHook) {
 		g_WarningHook(u8);
 	} else {
@@ -407,10 +379,8 @@ void K::warningW(const wchar_t *wfmt, ...) {
 }
 void K::error(const char *fmt_u8, ...) {
 	char u8[OUTPUT_STRING_SIZE] = {0};
-	va_list args;
-	va_start(args, fmt_u8);
-	vsnprintf(u8, sizeof(u8), fmt_u8, args);
-	va_end(args);
+	K__vsprintf__va_args(u8, sizeof(u8), fmt_u8);
+
 	if (g_ErrorHook) {
 		g_ErrorHook(u8);
 	} else {
@@ -1072,12 +1042,10 @@ std::string K::pathJoin(const std::string &s1, const std::string &s2) {
 	return ret;
 }
 std::string K::pathJoinFmt(const std::string &path1, const char *path2_fmt, ...) {
-	va_list args;
-	va_start(args, path2_fmt);
-	std::string path2 = str_vsprintf(path2_fmt, args);
-	va_end(args);
+	char s[OUTPUT_STRING_SIZE] = {0};
+	K__vsprintf__va_args(s, sizeof(s), path2_fmt);
 
-	return pathJoin(path1, path2);
+	return pathJoin(path1, s);
 }
 
 std::string K::pathRemoveLastDelim(const std::string &path) {

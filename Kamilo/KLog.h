@@ -45,7 +45,6 @@ enum KLogEmitFlag_ {
 	KLogEmitFlag_NOAPPTIME   = 0x04, // 経過ミリ秒を省略
 	KLogEmitFlag_NOPROCESSID = 0x08, // プロセスIDを省略
 	KLogEmitFlag_SHORTLEVEL  = 0x10, // 短い形式のレベル表示を使う
-	KLogEmitFlag_INIT_MUTE   = 0x20, // 初期化時には、全ての出力をOFFにした状態にしておく
 };
 typedef int KLogEmitFlags;
 
@@ -59,6 +58,7 @@ public:
 	virtual std::string getFileOutput() const = 0;
 	virtual bool getConsoleOutput() const = 0;
 	virtual bool getDebuggerOutput() const = 0;
+	virtual int command(const char* cmd, int arg) { return 0; }
 };
 
 class KLoggerCallback {
@@ -70,10 +70,12 @@ public:
 	virtual void on_log(KLogLv ll, const std::string &u8, bool *p_mute) = 0;
 };
 
+
+
 class KLogger: public KRef {
 public:
-	static void open(KLogEmitFlags flags=0);
-	static void close();
+	static void init();
+	static void shutdown();
 	static KLogger * get(const char *group="");
 
 public:
@@ -88,13 +90,22 @@ public:
 	virtual void pushLevel(KLogLv ll) = 0;
 	virtual void popLevel() = 0;
 
-	void critical(const std::string &s){ emit(KLogLv_CRITICAL, s); }
-	void error(const std::string &s)   { emit(KLogLv_ERROR, s); }
-	void warning(const std::string &s) { emit(KLogLv_WARNING, s); }
-	void info(const std::string &s)    { emit(KLogLv_INFO, s); }
-	void debug(const std::string &s)   { emit(KLogLv_DEBUG, s); }
-	void verbose(const std::string &s) { emit(KLogLv_VERBOSE, s); }
-	void print(const std::string &s)   { emit(KLogLv_NONE, s); }
+	void critical(const std::string &s);
+	void error(const std::string &s);
+	void warning(const std::string &s);
+	void info(const std::string &s);
+	void debug(const std::string &s);
+	void verbose(const std::string &s);
+	void print(const std::string &s);
+
+	void critical(const char *fmt, ...);
+	void error(const char *fmt, ...);
+	void warning(const char *fmt, ...);
+	void info(const char *fmt, ...);
+	void debug(const char *fmt, ...);
+	void verbose(const char *fmt, ...);
+	void print(const char *fmt, ...);
+
 };
 
 class KLogFileOutput {
@@ -200,5 +211,37 @@ private:
 namespace Test {
 void Test_log();
 }
+
+
+
+#if 1
+//#include "KInternal.h" // K__vsprintf__va_args
+#include <stdarg.h>
+#define Log_K__vsprintf__va_args(BUF, SIZE, FMT) { va_list args; va_start(args, FMT); vsnprintf(BUF, SIZE, FMT, args); va_end(args); }
+
+namespace KLog {
+	inline void printError(const char *fmt, ...) {
+		char s[1024] = {0};
+		Log_K__vsprintf__va_args(s, sizeof(s), fmt);
+		KLogger::get()->error(std::string(s));
+	}
+	inline void printWarning(const char *fmt, ...) {
+		char s[1024] = {0};
+		Log_K__vsprintf__va_args(s, sizeof(s), fmt);
+		KLogger::get()->warning(std::string(s));
+	}
+	inline void printInfo(const char *fmt, ...) {
+		char s[1024] = {0};
+		Log_K__vsprintf__va_args(s, sizeof(s), fmt);
+		KLogger::get()->info(std::string(s));
+	}
+	inline void printText(const char *fmt, ...) {
+		char s[1024] = {0};
+		Log_K__vsprintf__va_args(s, sizeof(s), fmt);
+		KLogger::get()->print(std::string(s));
+	}
+}
+
+#endif
 
 } // namespace

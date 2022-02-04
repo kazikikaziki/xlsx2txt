@@ -250,19 +250,32 @@ bool KLogConsoleOutput::open(bool no_taskbar) {
 	close();
 	#ifndef _CONSOLE
 	AllocConsole();
-	if (no_taskbar) {
-		// コンソールウィンドウがタスクバーに出ないようにする
-		std::string title = K::str_sprintf("%s (#%d)", K::sysGetCurrentExecName().c_str(), K::sysGetCurrentProcessId());
-		SetConsoleTitleA(title.c_str()); // プロセスIDを含めたユニークなタイトルを用意して設定する
+
+	// コンソールウィンドウのタイトルを設定
+	// プロセスIDを含めたユニークなタイトルを用意する（タイトルからウィンドウハンドルが検索できるように）
+	std::string title = K::str_sprintf("%s (#%d)", K::sysGetCurrentExecName().c_str(), K::sysGetCurrentProcessId());
+	SetConsoleTitleA(title.c_str()); // プロセスIDを含めたユニークなタイトルを用意して設定する
+
+	// コンソールウィンドウのHWNDを取得
+	HWND hWnd = NULL;
+	{
 		int timeout = 60;
 		uint32_t msec = K::clockMsec32();
-		HWND hWnd = NULL;
 		while (hWnd == NULL && K::clockMsec32() < msec + timeout) {
 			hWnd = FindWindowA(NULL, title.c_str()); // タイトルをもとにしてコンソールウィンドウを探す
 			Sleep(10);
 		}
+	}
+
+	if (no_taskbar) {
+		// コンソールウィンドウがタスクバーに出ないようにする
 		SetWindowLongA(hWnd, GWL_EXSTYLE, WS_EX_TOOLWINDOW); // ツールウィンドウ用のウィンドウスタイルを適用する
 	}
+	if (1) {
+		// コンソールウィンドウをデスクトップ左上に置く
+		SetWindowPos(hWnd, NULL, 0, 0, 800, 600, 0/*SWP_NOSIZE*/);
+	}
+
 	freopen_s(&m_Stdout, "CON", "w", stdout);
 	#endif
 	return true;
@@ -462,9 +475,11 @@ public:
 	KLogConsoleOutput m_Console;
 	KLogDebuggerOutput m_Debugger;
 	uint32_t m_StartMsec;
+	bool m_NoTaskBar;
 
 	CLogEmitter() {
 		m_StartMsec = K::clockMsec32();
+		m_NoTaskBar = false;
 	}
 	// テキストを出力する
 	// ユーザーによるコールバックを通さず、既定の出力先に直接書き込む。
@@ -528,12 +543,17 @@ public:
 			m_File.close();
 		}
 	}
+	virtual int command(const char* cmd, int arg) override {
+		if (strcmp(cmd, "no_taskbar") == 0) {
+			m_NoTaskBar = (arg != 0);
+		}
+		return 0;
+	}
 	virtual void setConsoleOutput(bool enabled) override {
-		bool no_taskbar = true;
 		if (enabled) {
 			// コンソールへの出力を有効にする
 			// 順番に注意：有効にしてからログを出す
-			m_Console.open(no_taskbar);
+			m_Console.open(m_NoTaskBar);
 			LOGGER_LOG("console on");
 		} else {
 			// コンソールへの出力を停止する。
@@ -643,10 +663,8 @@ public:
 	}
 	virtual void emitf(KLogLv ll, const char *fmt, ...) override {
 		char s[1024] = {0};
-		va_list args;
-		va_start(args, fmt);
-		vsnprintf(s, sizeof(s), fmt, args);
-		va_end(args);
+		K__vsprintf__va_args(s, sizeof(s), fmt);
+
 		emit(ll, s);
 	}
 };
@@ -746,8 +764,9 @@ static void Logger_emit_err(const char *u8) {
 #pragma region KLogger
 static int g_LoggerOpen = 0;
 static std::unordered_map<std::string, KLogger *> g_Loggers;
+static const int SPRINTF_BUFSIZE = 1024;
 
-void KLogger::open(KLogEmitFlags flags) {
+void KLogger::init() {
 	if (g_Loggers[""] == nullptr) { // no root logger
 		K::setDebugPrintHook(Logger_emit_dbg); // K::debug   の出力先を KLog にする
 		K::setPrintHook(Logger_emit_msg);      // K::print   の出力先を KLog にする
@@ -757,19 +776,13 @@ void KLogger::open(KLogEmitFlags flags) {
 		KLogger *log = get("");
 		K__ASSERT(log);
 
-		if (flags & KLogEmitFlag_INIT_MUTE) {
-			log->getEmitter()->setConsoleOutput(false);
-			log->getEmitter()->setDebuggerOutput(false);
-			log->getEmitter()->setFileOutput("", 0);
-		} else {
-			log->getEmitter()->setConsoleOutput(true);
-			log->getEmitter()->setDebuggerOutput(true);
-			log->getEmitter()->setFileOutput("log.txt", flags);
-		}
+		log->getEmitter()->setConsoleOutput(false);
+		log->getEmitter()->setDebuggerOutput(false);
+		log->getEmitter()->setFileOutput("", 0);
 	}
 	g_LoggerOpen++;
 }
-void KLogger::close() {
+void KLogger::shutdown() {
 	K__LOGLOG_ASSERT(g_LoggerOpen > 0);
 	g_LoggerOpen--;
 	if (g_LoggerOpen == 0) {
@@ -795,6 +808,22 @@ KLogger * KLogger::get(const char *group) {
 	g_Loggers[group] = log;
 	return log;
 }
+
+void KLogger::critical(const std::string &s){ emit(KLogLv_CRITICAL, s); }
+void KLogger::error(const std::string &s)   { emit(KLogLv_ERROR, s); }
+void KLogger::warning(const std::string &s) { emit(KLogLv_WARNING, s); }
+void KLogger::info(const std::string &s)    { emit(KLogLv_INFO, s); }
+void KLogger::debug(const std::string &s)   { emit(KLogLv_DEBUG, s); }
+void KLogger::verbose(const std::string &s) { emit(KLogLv_VERBOSE, s); }
+void KLogger::print(const std::string &s)   { emit(KLogLv_NONE, s); }
+
+void KLogger::critical(const char *fmt, ...){ char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_CRITICAL, s); }
+void KLogger::error(const char *fmt, ...)   { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_ERROR,    s); }
+void KLogger::warning(const char *fmt, ...) { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_WARNING,  s); }
+void KLogger::info(const char *fmt, ...)    { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_INFO,     s); }
+void KLogger::debug(const char *fmt, ...)   { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_DEBUG,    s); }
+void KLogger::verbose(const char *fmt, ...) { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_VERBOSE,  s); }
+void KLogger::print(const char *fmt, ...)   { char s[SPRINTF_BUFSIZE]; K__vsprintf__va_args(s, sizeof(s), fmt); emit(KLogLv_NONE,     s); }
 
 #pragma endregion // KLogger
 

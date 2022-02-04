@@ -1,6 +1,7 @@
 ﻿#include "KStorage.h"
 
 #include <vector>
+#include <unordered_map>
 #include "KDirectoryWalker.h"
 #include "KEmbeddedFiles.h"
 #include "KInternal.h"
@@ -13,7 +14,7 @@
 #	define K_CASE_CHECK 1
 #endif
 
-const int PAC_CASE_CEHCK = 1;
+const int PAC_CASE_CEHCK = 0;
 
 
 namespace Kamilo {
@@ -145,6 +146,7 @@ KArchive * KArchive::createFolderReader(const std::string &dir) {
 
 #pragma region CZipArchive
 class CZipArchive: public KArchive {
+	std::unordered_map<std::string, std::string> m_Cache;
 	KUnzipper m_Unzipper;
 	std::string m_Password;
 	std::string m_TmpString;
@@ -162,16 +164,25 @@ public:
 		return r.isOpen();
 	}
 	virtual KInputStream createFileReader(const std::string &filename) override {
-		KInputStream file;
-		for (int i=0; i<m_Unzipper.getEntryCount(); i++) {
-			const char *s = getFileName(i);
-			if (K::pathCompare(s, filename, false, false) == 0) {
-				std::string bin;
-				m_Unzipper.getEntryData(i, m_Password.c_str(), &bin);
-				file.openMemoryCopy(bin.data(), bin.size());
+		if (m_Cache.find(filename) == m_Cache.end()) {
+			KInputStream file;
+			for (int i=0; i<m_Unzipper.getEntryCount(); i++) {
+				const char *s = getFileName(i);
+				if (K::pathCompare(s, filename, false, false) == 0) {
+					std::string bin;
+					m_Unzipper.getEntryData(i, m_Password.c_str(), &bin);
+					m_Cache[filename] = bin;
+					break;
+				}
 			}
 		}
-		return file;
+
+		{
+			const std::string &bin = m_Cache[filename];
+			KInputStream file;
+			file.openMemoryCopy(bin.data(), bin.size());
+			return file;
+		}
 	}
 	virtual int getFileCount() override {
 		return m_Unzipper.getEntryCount();
@@ -208,6 +219,7 @@ KArchive * KArchive::createZipReader(const std::string &zip, const std::string &
 
 #pragma region CPacFile
 class CPacFile: public KArchive {
+	std::unordered_map<std::string, std::string> m_Cache;
 	KPacFileReader m_PacReader;
 	std::string m_TmpString;
 public:
@@ -233,17 +245,24 @@ public:
 		}
 		return m_PacReader.getIndexByName(name, false, false) >= 0;
 	}
-	virtual KInputStream createFileReader(const std::string &name) override {
-		KInputStream file;
+	virtual KInputStream createFileReader(const std::string &filename) override {
 		if (PAC_CASE_CEHCK) {
-			check_filename_case(name);
+			check_filename_case(filename);
 		}
-		int index = m_PacReader.getIndexByName(name, false, false);
-		if (index >= 0) {
-			std::string bin = m_PacReader.getData(index);
+		if (m_Cache.find(filename) == m_Cache.end()) {
+			int index = m_PacReader.getIndexByName(filename, false, false);
+			if (index >= 0) {
+				std::string bin = m_PacReader.getData(index);
+				m_Cache[filename] = bin;
+			}
+		}
+
+		{
+			const std::string &bin = m_Cache[filename];
+			KInputStream file;
 			file.openMemoryCopy(bin.data(), bin.size());
+			return file;
 		}
-		return file;
 	}
 	virtual int getFileCount() override {
 		return m_PacReader.getCount();

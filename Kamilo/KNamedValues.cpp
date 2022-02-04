@@ -1,6 +1,9 @@
 ﻿#include "KNamedValues.h"
 //
 #include "KInternal.h"
+#include "KStream.h"
+#include "KMath.h"
+#include "KXml.h"
 
 namespace Kamilo {
 

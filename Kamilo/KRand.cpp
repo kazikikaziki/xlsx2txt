@@ -16,9 +16,11 @@ void KXorShift::init(uint32_t seed) {
 	mY = 362436069;
 	mZ = 521288629;
 	mW = (seed != 0) ? seed : 88675123;
+#if 0
 	for (int i=0; i<256; i++) {
 		random();
 	}
+#endif
 }
 uint32_t KXorShift::random() {
 	// http://ja.wikipedia.org/wiki/Xorshift
@@ -46,9 +48,9 @@ int KXorShift::randInt(int range) {
 }
 int KXorShift::randIntRange(int a, int b) {
 	if (a < b) {
-		return a + randInt(b - a);
+		return a + randInt(b - a + 1);
 	} else {
-		return b + randInt(a - b);
+		return b + randInt(a - b + 1);
 	}
 }
 

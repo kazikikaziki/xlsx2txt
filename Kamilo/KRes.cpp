@@ -8,6 +8,7 @@
 #include "KFont.h"
 #include "KDirectoryWalker.h"
 #include "KSig.h"
+#include "KXml.h"
 
 #define INVALID_OPERATION    K__WARNING("INVALID_OPERATION at %s(%d): %s", __FILE__, __LINE__, __FUNCTION__)
 
@@ -375,7 +376,32 @@ bool KSpriteRes::buildFromPng(const void *png_data, int png_size, const KPath &t
 
 
 
-#pragma region KClipImpl
+
+
+#pragma region KClipRes::SPRITE_KEY
+KClipRes::SPRITE_KEY::SPRITE_KEY() {
+	duration = 0;
+	time = 0;
+	this_mark = KMark_NONE;
+	next_mark = KMark_NONE;
+	num_layers = 0;
+	edge_page = -1;
+	xml_data = NULL;
+}
+KClipRes::SPRITE_KEY::~SPRITE_KEY() {
+//	K__DROP(xml_data);
+}
+KClipRes::SPRITE_KEY KClipRes::SPRITE_KEY::clone() const {
+	SPRITE_KEY copy = *this;
+	copy.xml_data = xml_data->clone();
+	return copy;
+}
+
+#pragma endregion // KClipRes::SPRITE_KEY
+
+
+
+#pragma region KClipRes
 KClipRes::KClipRes(const std::string &name) {
 	m_Name = name;
 	m_EditInfoXml = nullptr;
@@ -846,6 +872,61 @@ void KClipRes::recalculateKeyTimes() {
 }
 #pragma endregion // KClipRes
 
+
+
+
+#pragma region SPRITE_ATTR
+SPRITE_ATTR::SPRITE_ATTR() {
+	clear();
+}
+void SPRITE_ATTR::clear() {
+	blend = KBlend_INVALID;
+	pivot_x = 0;
+	pivot_y = 0;
+	pivot_x_in_percent = false;
+	pivot_y_in_percent = false;
+	page = -1;
+	has_blend = false;
+	has_pivot_x = false;
+	has_pivot_y = false;
+}
+
+void SPRITE_ATTR::readFromXmlAttr(KXmlElement *elm) {
+	clear();
+
+	page = elm->getAttrInt("page", -1);
+
+	const char *blend_str = elm->getAttrString("blend");
+	if (blend_str) {
+		KBlend bl = KVideoUtils::strToBlend(blend_str, KBlend_INVALID);
+		if (bl != KBlend_INVALID) {
+			blend = bl;
+			has_blend = true;
+		}
+	}
+	const char *px_str = elm->getAttrString("pivotX");
+	if (px_str) {
+		KNumval numval(px_str);
+		pivot_x = numval.numf;
+		pivot_x_in_percent = numval.has_suffix("%");
+		has_pivot_x = true;
+	}
+
+	const char *py_str = elm->getAttrString("pivotY");
+	if (py_str) {
+		KNumval numval(py_str);
+		pivot_y = numval.numf;
+		pivot_y_in_percent = numval.has_suffix("%");
+		has_pivot_y = true;
+	}
+}
+float SPRITE_ATTR::getPivotXInPixels(int atlas_w) const {
+	return pivot_x_in_percent ? (atlas_w * pivot_x / 100) : pivot_x;
+}
+float SPRITE_ATTR::getPivotYInPixels(int atlas_h) const {
+	return pivot_y_in_percent ? (atlas_h * pivot_y / 100) : pivot_y;
+}
+#pragma endregion // SPRITE_ATTR
 
 
 
@@ -1524,13 +1605,15 @@ public:
 		}
 		if (1) {
 			// テクスチャ画像を png でエクスポートする
-			std::string filename = K::str_sprintf("__export__%s.png", KGamePath::escapeFileName(texname).u8());
+			std::string esc = KGamePath::escapeFileName(texname).u8();
+			std::string filename = K::str_sprintf("__export__%s.png", esc.c_str());
 			std::string fullname = K::pathGetFull(filename);
 			KImGui::ImageExportButton("Export", texid, fullname.c_str(), false);
 		}
 		if (1) {
 			// テクスチャ画像のアルファマスクを png でエクスポートする
-			std::string filename = K::str_sprintf("__export__%s_a.png", KGamePath::escapeFileName(texname).u8());
+			std::string esc = KGamePath::escapeFileName(texname).u8();
+			std::string filename = K::str_sprintf("__export__%s_a.png", esc.c_str());
 			std::string fullname = K::pathGetFull(filename);
 			KImGui::ImageExportButton("Export Alpha", texid, fullname.c_str(), true);
 		}
@@ -3553,8 +3636,9 @@ static void _ReadPageNextAttr(CLayeredSpriteClipBuilder &builder, KXmlElement *x
 
 #pragma region KGamePath
 
-#define RESOURCE_NAME_CHAR_SET          " ._()[]{}<>#$%&=~^@+-"
-#define PATH_INDEX_SEPARATOR            '@' // パス名とインデックス番号の区切り文字
+const char  PATH_INDEX_SEPARATOR   = '@'; // パス名とインデックス番号の区切り文字
+const char *RESOURCE_NAME_CHAR_SET = " ._()[]{}<>#$%&=~^@+-";
+const char *HEX_STR                = "0123456789abcdef";
 
 /// ファイル名として安全な文字列にする
 KPath KGamePath::escapeFileName(const KPath &name) {
@@ -3567,8 +3651,9 @@ KPath KGamePath::escapeFileName(const KPath &name) {
 		} else if (isascii(s[i])) {
 			tmp[i] = '_';
 		} else {
-			tmp[i  ] = '0' + (uint8_t)(s[i]) / 16;
-			tmp[i+1] = '0' + (uint8_t)(s[i]) % 16;
+			uint8_t uc = (uint8_t)s[i];
+			tmp[i  ] = HEX_STR[uc / 16];
+			tmp[i+1] = HEX_STR[uc % 16];
 			i++; // 2文字書き込んでいるので、iを1回余分にインクリメントする必要がある
 		}
 	} // 終端のヌル文字にはmemsetで初期化したときの0を使う

@@ -7,7 +7,8 @@
 #include <Shlobj.h> // SHGetFolderPath
 #include "KRes.h"
 #include "KInternal.h"
-
+#include "KMath.h"
+#include "KLog.h"
 
 #ifdef K_USE_STB_TRUETYPE
 	// stb_truetype

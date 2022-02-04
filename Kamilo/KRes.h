@@ -166,19 +166,6 @@ public:
 		KPath command; // レイヤーコマンド
 	};
 	struct SPRITE_KEY {
-		SPRITE_KEY() {
-			duration = 0;
-			time = 0;
-			this_mark = KMark_NONE;
-			next_mark = KMark_NONE;
-			num_layers = 0;
-			edge_page = -1;
-			xml_data = NULL;
-		}
-		~SPRITE_KEY() {
-		//	K__DROP(xml_data);
-		}
-
 		int time; // キー時刻（トラック先頭からの経過時間）
 		int duration; // このキーから次のキーまでの時間（アニメディレイ）
 		KMark this_mark; // このキーを特定するためのマーク番号（マークとして有効なのは 1 以上の値のみ）
@@ -191,11 +178,9 @@ public:
 		KNamedValues user_parameters; // ユーザー定義データ
 		KXmlElement *xml_data;
 
-		SPRITE_KEY clone() const {
-			SPRITE_KEY copy = *this;
-			copy.xml_data = xml_data->clone();
-			return copy;
-		}
+		SPRITE_KEY();
+		~SPRITE_KEY();
+		SPRITE_KEY clone() const;
 	};
 
 	enum Flag {
@@ -731,9 +716,6 @@ public:
 
 
 struct SPRITE_ATTR {
-	SPRITE_ATTR() {
-		clear();
-	}
 	KBlend blend;
 	float pivot_x;
 	float pivot_y;
@@ -744,53 +726,11 @@ struct SPRITE_ATTR {
 	bool has_pivot_x;
 	bool has_pivot_y;
 
-	void clear() {
-		blend = KBlend_INVALID;
-		pivot_x = 0;
-		pivot_y = 0;
-		pivot_x_in_percent = false;
-		pivot_y_in_percent = false;
-		page = -1;
-		has_blend = false;
-		has_pivot_x = false;
-		has_pivot_y = false;
-	}
-
-	void readFromXmlAttr(KXmlElement *elm) {
-		clear();
-
-		page = elm->getAttrInt("page", -1);
-
-		const char *blend_str = elm->getAttrString("blend");
-		if (blend_str) {
-			KBlend bl = KVideoUtils::strToBlend(blend_str, KBlend_INVALID);
-			if (bl != KBlend_INVALID) {
-				blend = bl;
-				has_blend = true;
-			}
-		}
-		const char *px_str = elm->getAttrString("pivotX");
-		if (px_str) {
-			KNumval numval(px_str);
-			pivot_x = numval.numf;
-			pivot_x_in_percent = numval.has_suffix("%");
-			has_pivot_x = true;
-		}
-
-		const char *py_str = elm->getAttrString("pivotY");
-		if (py_str) {
-			KNumval numval(py_str);
-			pivot_y = numval.numf;
-			pivot_y_in_percent = numval.has_suffix("%");
-			has_pivot_y = true;
-		}
-	}
-	float getPivotXInPixels(int atlas_w) const {
-		return pivot_x_in_percent ? (atlas_w * pivot_x / 100) : pivot_x;
-	}
-	float getPivotYInPixels(int atlas_h) const {
-		return pivot_y_in_percent ? (atlas_h * pivot_y / 100) : pivot_y;
-	}
+	SPRITE_ATTR();
+	void clear();
+	void readFromXmlAttr(KXmlElement *elm);
+	float getPivotXInPixels(int atlas_w) const;
+	float getPivotYInPixels(int atlas_h) const;
 };
 
 

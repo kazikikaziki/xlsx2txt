@@ -62,7 +62,7 @@ void KGizmoAct::addLine(const KVec3 &a, const KVec3 &b, const KColor32 &color_a,
 		m_MeshBuf.addToMesh(mesh, KPrimitive_LINES);
 	}
 }
-void KGizmoAct::addRegularPolygon(const KVec3 &pos, float radius, int count, float start_degrees, const KColor32 &fill_color, const KColor32 &outline_color) {
+void KGizmoAct::addRegularPolygon(const KVec3 &pos, float radius, int count, float start_degrees, const KColor32 &border_color, const KColor32 &fill_color) {
 	KMeshDrawable *co = getGizmoMeshDrawable();
 	KMesh *mesh = co ? co->getMesh() : nullptr;
 	if (mesh && count >= 2) {
@@ -80,13 +80,45 @@ void KGizmoAct::addRegularPolygon(const KVec3 &pos, float radius, int count, flo
 			m.color = fill_color;
 			m_MeshBuf.addToMesh(mesh, KPrimitive_TRIANGLE_FAN, &m);
 		}
-		if (outline_color != KColor32::ZERO) {
+		if (border_color != KColor32::ZERO) {
 			KMaterial m;
-			m.color = outline_color;
+			m.color = border_color;
 			m_MeshBuf.addToMesh(mesh, KPrimitive_LINE_STRIP, &m);
 		}
 	}
-};
+}
+void KGizmoAct::addConvexPolygon(const KVec3 &pos, const KVec3 points[], int count, const KColor32 &border_color, const KColor32 &fill_color) {
+	KMeshDrawable *co = getGizmoMeshDrawable();
+	KMesh *mesh = co ? co->getMesh() : nullptr;
+	if (mesh) {
+		m_MeshBuf.resize2(mesh, count, 0);
+		for (int i=0; i<count; i++) {
+			m_MeshBuf.setPosition(i, pos + points[i]);
+			m_MeshBuf.setColor32(i, KColor32::WHITE);
+		}
+		if (fill_color != KColor32::ZERO) {
+			KMaterial m;
+			m.color = fill_color;
+			m_MeshBuf.addToMesh(mesh, KPrimitive_TRIANGLE_FAN, &m); // Convex..凸な多角形なので FAN で塗りつぶしできる
+		}
+		if (border_color != KColor32::ZERO) {
+			KMaterial m;
+			m.color = border_color;
+			m_MeshBuf.addToMesh(mesh, KPrimitive_LINE_STRIP, &m);
+		}
+	}
+}
+void KGizmoAct::addRectangle(const KVec3 &pos, const KVec3 &halfsize, const KColor32 &border_color, const KColor32 &fill_color) {
+	KVec3 points[5] = {
+		KVec3(-halfsize.x, -halfsize.y, 0.0f),
+		KVec3( halfsize.x, -halfsize.y, 0.0f),
+		KVec3( halfsize.x,  halfsize.y, 0.0f),
+		KVec3(-halfsize.x,  halfsize.y, 0.0f),
+		KVec3(-halfsize.x, -halfsize.y, 0.0f),
+	}; 
+	addConvexPolygon(pos, points, 5, border_color, fill_color);
+}
+
 #pragma endregion // KGizmoAct
 
 } // namespace

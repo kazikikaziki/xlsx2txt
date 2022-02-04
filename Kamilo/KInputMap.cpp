@@ -1489,6 +1489,49 @@ public:
 		m_GameButtons->updateGui();
 		ImGui::Unindent();
 		KImGui::VSpace();
+
+		ImGui::Text("Devices");
+		ImGui::Separator();
+		if (ImGui::TreeNode("Keyboard")) {
+			bool noinput = true;
+			for (int i=0; i<KKey_ENUM_MAX; i++) {
+				if (KKeyboard::isKeyDown((KKey)i)) {
+					ImGui::Text("%s", KKeyboard::getKeyName((KKey)i));
+					noinput = false;
+				}
+			}
+			if (noinput) {
+				ImGui::Text("(no any key pressed)");
+			}
+			ImGui::TreePop();
+		}
+		if (ImGui::TreeNode("Joystick")) {
+			if (KJoystick::isInit() == false) {
+				KJoystick::init();
+			}
+			for (int i=0; i<KJoystick::MAX_CONNECT; i++) {
+				if (KJoystick::isConnected(i)) {
+					KJoystick::poll(i);
+					for (int a=0; a<KJoystick::getAxisCount(i); a++) {
+						float v = KJoystick::getAxis(i, a);
+						if (v != 0.0f) {
+							ImGui::Text("Joy[%d].Axis[%d]: %.1f", i, a, v);
+						}
+					}
+					for (int b=0; b<KJoystick::getButtonCount(i); b++) {
+						if (KJoystick::getButton(i, b)) {
+							ImGui::Text("Joy[%d].Button[%d]", i, b);
+						}
+					}
+					int x, y;
+					if (KJoystick::getPov(i, &x, &y, nullptr)) {
+						if (x) ImGui::Text("Joy[%d].PovX: %d", i, x);
+						if (y) ImGui::Text("Joy[%d].PovY: %d", i, y);
+					}
+				}
+			}
+			ImGui::TreePop();
+		}
 	}
 	virtual bool on_manager_isattached(KNode *node) override {
 		return m_Nodes.contains(node);

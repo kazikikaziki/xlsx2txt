@@ -33,10 +33,14 @@ public:
 
 	void _setNode(KNode *node) {
 		 m_node = node;
+		 if (node) {
+			 m_last_node_path = node->getNameInTree();
+		 }
 	}
 	KNode * getSelf() {
 		return m_node;
 	}
+	std::string m_last_node_path;
 };
 
 } // namespace
